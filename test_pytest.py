@@ -1,0 +1,368 @@
+import raw_trace_retriever.get_transactions as get_transactions
+import raw_trace_retriever.trace_transformation as trace_transformation
+import raw_trace_retriever.helpers as helpers
+import raw_trace_retriever.create_relations as create_relations
+import trace_decoder.data_preparation as data_preparation
+import trace_decoder.event_decoder as event_decoder
+import log_construction.utils as utils
+import pickle
+import os
+import pandas as pd
+import math
+import json
+
+
+dir_path = os.path.dirname(os.path.realpath(__file__))
+
+# def test_check_socket():
+#     port = 8081
+#     port_message = functions_helpers.check_socket("127.0.0.1", port)
+#     assert(port_message == "Port is open")
+
+with open('config.json', 'r') as file:
+        config = json.load(file)
+    
+etherscan_api_key = config["etherscan_api_key"]
+
+def load_event_definitions(config_file):
+    with open(config_file, 'r') as file:
+        event_definitions = json.load(file)
+    return event_definitions
+    
+
+def test_get_transactions():
+    # Load correct dataframes for internal and external transactions
+    df_txs_lx_normal = pickle.load(open(dir_path+r'\tests\test_resources\df_txs_lx_normal_0xd5524179cb7ae012f5b642c1d6d700bbaa76b96b_12804576_14355905.pkl', 'rb'))
+    df_txs_lx_internal = pickle.load(open(dir_path+r'\tests\test_resources\df_txs_lx_internal_0xd5524179cb7ae012f5b642c1d6d700bbaa76b96b_12804576_14355905.pkl', 'rb'))
+    
+    list_contract_address = ["0xd5524179cb7ae012f5b642c1d6d700bbaa76b96b"]
+    min_block = 12804576
+    max_block = 14355905
+    
+    df_normal = get_transactions.get_transactions(list_contract_address, min_block, max_block, internal_flag="normal", etherscan_api_key=etherscan_api_key)
+    df_internal = get_transactions.get_transactions(list_contract_address, min_block, max_block, internal_flag="internal", etherscan_api_key=etherscan_api_key)
+    
+    assert len(df_normal) == len(df_txs_lx_normal) # == 10
+    assert len(df_internal) == len(df_txs_lx_internal) # == 10
+    assert list(df_normal.keys()) == list(df_txs_lx_normal.keys())
+    assert list(df_internal.keys()) == list(df_txs_lx_internal.keys())
+
+    # With multiple contracts as input to the loop
+    df_txs_lx_normal = pickle.load(open(dir_path+r'\tests\test_resources\df_txs_lx_normal_0xd5524179cb7ae012f5b642c1d6d700bbaa76b96b_0x24e2B1d415E6E0d04042eaa45Dc2A08FC33CA6Cd_12804576_14355905.pkl', 'rb'))
+    df_txs_lx_internal = pickle.load(open(dir_path+r'\tests\test_resources\df_txs_lx_internal_0xd5524179cb7ae012f5b642c1d6d700bbaa76b96b_0x24e2B1d415E6E0d04042eaa45Dc2A08FC33CA6Cd_12804576_14355905.pkl', 'rb'))   
+ 
+    list_contract_address = ["0xd5524179cb7ae012f5b642c1d6d700bbaa76b96b", "0x24e2B1d415E6E0d04042eaa45Dc2A08FC33CA6Cd"]
+    min_block = 12804576
+    max_block = 14355905
+    
+    df_normal = get_transactions.get_transactions(list_contract_address, min_block, max_block, internal_flag="normal", etherscan_api_key=etherscan_api_key)
+    df_internal = get_transactions.get_transactions(list_contract_address, min_block, max_block, internal_flag="internal", etherscan_api_key=etherscan_api_key)
+    
+    assert len(df_normal) == len(df_txs_lx_normal) # == 11
+    assert len(df_internal) == len(df_txs_lx_internal) # == 11
+    assert list(df_normal.keys()) == list(df_txs_lx_normal.keys()) 
+    assert list(df_internal.keys()) == list(df_txs_lx_internal.keys())
+
+    min_block = 9999881
+    max_block = 10161640
+    list_contract_address = ["0x1985365e9f78359a9b6ad760e32412f4a445e862"]
+    df_normal = get_transactions.get_transactions(list_contract_address, min_block, max_block, internal_flag="normal", etherscan_api_key=etherscan_api_key)
+    assert len(df_normal) == 10001
+    
+    min_block = 9999881
+    max_block = 10304956
+    list_contract_address = ["0x1985365e9f78359a9b6ad760e32412f4a445e862"]
+    df_normal = get_transactions.get_transactions(list_contract_address, min_block, max_block, internal_flag="normal", etherscan_api_key=etherscan_api_key)
+    assert len(df_normal) == 20000
+
+
+def test_get_transactions_by_events():
+    min_block = 11280718
+    max_block = 11280718  
+    node_url = "http://localhost:8081"
+    contracts = ["0xc7af99fe5513eb6710e6d5f44f9989da40f27f26"]
+    df = get_transactions.get_transactions_by_events(node_url, contracts, min_block, max_block)
+    assert df["hash"][0] == "0x0499e012b24bae9941a145cd12d045cf63d8b544d050601b60665ba111310ad4"
+    assert len(df) == 1
+
+    min_block = 11280718
+    max_block = 11310918  
+    node_url = "http://localhost:8081"
+    contracts = ["0xc7af99fe5513eb6710e6d5f44f9989da40f27f26", "0xb1690c08e213a35ed9bab7b318de14420fb57d8c"]
+    df = get_transactions.get_transactions_by_events(node_url, contracts, min_block, max_block)
+    assert len(df) == 1174   
+    
+    
+def test_json_retriever():
+    # Load a correct, pickled trace for comparison 
+    node_url = "http://localhost:8081"
+    trace_json_lx_read = pickle.load(open(dir_path+r'\tests\test_resources\trace_json_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29.pkl', 'rb'))
+    # correct tx hash, all should be fine
+    json_dict, json_flag = trace_transformation.json_retriever("0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29", node_url)
+    assert json_flag == True
+    assert json_dict == trace_json_lx_read
+    # case sensitivity, all should be fine
+    json_dict, json_flag = trace_transformation.json_retriever("0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697DC29", node_url)
+    assert json_flag == True
+    assert json_dict == trace_json_lx_read
+    # random string as tx hash
+    json_dict, json_flag = trace_transformation.json_retriever("string_that_is_no_tx_hash", node_url)
+    assert json_flag == False
+    assert json_dict != trace_json_lx_read
+    # length of a hash, but faulty digit (final number: 8 instead of 7)
+    json_dict, json_flag = trace_transformation.json_retriever("0xbceb9db10ec228dbef251b1a48bc0b3f03a8d345f7f3b454d8cc1e86f380b6d8", node_url)
+    assert json_flag == False
+    assert json_dict != trace_json_lx_read
+
+
+def test_txs_to_trace():
+    port = 8081
+    host = "http://127.0.0.1"
+    node_url = host + ":" + str(port)
+#    node_url = "http://localhost:8081"
+    # We test: Does the number of entries in the resulting dataframe reflect the number of entries in the JSON-trace
+    df_txs_lx = pickle.load(open(dir_path+r'\tests\test_resources\df_txs_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29.pkl', 'rb'))
+    trace_json_lx_read = pickle.load(open(dir_path+r'\tests\test_resources\trace_json_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29.pkl', 'rb'))    
+    df_trace_lx = trace_transformation.tx_to_trace(df_txs_lx, node_url)
+    
+    # get the number of referrals between smart contracts (CALL, CREATE, DELEGATECALL, etc.) in the trace
+    number_of_referrals = helpers.count_string_occurrences_in_keys(trace_json_lx_read, "type")
+    # get the number of events in the trace
+    number_of_events = helpers.count_string_occurrences_in_keys(trace_json_lx_read, "topics")
+    
+    assert len(df_trace_lx) == (number_of_events+number_of_referrals) # == 571
+    
+
+def test_remove_predefined_contracts():
+    set_contracts_lx = ["0x123...", "0x456...", "0x0000000000000000000000000000000000000000", "0x789..."]
+    set_predefined_non_dapp_contracts = ["0x0000000000000000000000000000000000000000", "0xabc...", "0xdef..."]
+    filtered_set = create_relations.remove_predefined_contracts(set_contracts_lx, set_predefined_non_dapp_contracts)
+    assert filtered_set == {'0x123...', '0x789...', '0x456...'}
+
+ 
+ ############# MODULE TRACE DECODER ############# 
+
+
+def test_abi_retrieval():
+    addresses = pickle.load(open(dir_path+r'\tests\test_resources\addresses_6.pkl', 'rb'))
+    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict(addresses, etherscan_api_key)
+    assert(len(non_verified_addresses)==1)
+    assert(len(verified_addresses) == 5)
+    assert(len(dict_abi) == 5)
+
+
+def test_decode_events():
+    base_contract = "0xbcc9946143534e28c3bad116cea0f81b9b208799"
+    dict_abi = pickle.load(open(dir_path+r'\tests\test_resources\dict_abi_' +  base_contract + '_clean.pkl', 'rb'))
+    df_log = pickle.load(open(dir_path+r'\tests\test_resources\df_log_' +  base_contract + '.pkl', 'rb'))
+    # format of df_log has changed, after test was originally written (order_in_trace was inserted as a column / attribute)
+    df_log["order_in_trace"] = df_log["order"]
+    df_log["address"] = df_log["address"].apply(lambda x: str(x).lower() if str(x) != "nan" else x)
+    df_events, txs_event_not_decoded, unknown_event_addresses = data_preparation.decode_events(df_log, dict_abi)
+    df_events.reset_index(drop=True, inplace=True)
+    # Test for a fallback event / standard event
+    assert(df_events["name"][1] == "Approval")
+    # Test of an event in the contract stecific API
+    assert(df_events["name"][33] == "Deposited")
+    assert(len(df_events == 40))
+    assert(txs_event_not_decoded == ['0x805b27c880eb35907a2a356dbceb318eec6b596670fd2b5488adca1a9bd7d084'])
+    assert(unknown_event_addresses == {'0x1dd864ed6f291b31c86aaf228db387cd60a20e18'})
+    
+    
+def test_event_decoder():
+    
+    path = os.path.join(dir_path, 'config_custom_events.json')
+    fallback_abis = load_event_definitions(path)
+    
+    tx_ERC_20_Transfer = "0xc4f4145f215d491be7123beacffe51d3d007a8060aab92826946c0dc744a9349"
+    tx_hash = tx_ERC_20_Transfer
+    
+    df_log = pickle.load(open(dir_path+r'\tests\test_resources\df_log_tx_ERC_20_Transfer_'+  tx_hash + '.pkl', 'rb'))
+    
+    i = 0
+    address = df_log["address"].iloc[i]
+    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict([address], etherscan_api_key)
+    address = df_log["address"].iloc[i]
+    topics = df_log["topics"].iloc[i]
+    data = df_log["data"].iloc[i]
+    decoded_event = event_decoder.event_decoder(address, topics, data, dict_abi, fallback_abis)
+    assert(decoded_event["name"] == "Transfer")
+    
+    i = 1
+    address = df_log["address"].iloc[i]
+    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict([address], etherscan_api_key)
+    address = df_log["address"].iloc[i]
+    topics = df_log["topics"].iloc[i]
+    data = df_log["data"].iloc[i]
+    decoded_event = event_decoder.event_decoder(address, topics, data, dict_abi, fallback_abis)
+    assert(decoded_event["name"] == "TokensMinted")
+    
+    i = 2
+    address = df_log["address"].iloc[i]
+    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict([address], etherscan_api_key)
+    address = df_log["address"].iloc[i]
+    topics = df_log["topics"].iloc[i]
+    data = df_log["data"].iloc[i]
+    decoded_event = event_decoder.event_decoder(address, topics, data, dict_abi, fallback_abis)
+    assert(decoded_event["name"] == "TokenBalanceChanged")
+
+    i = 3
+    address = df_log["address"].iloc[i]
+    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict([address], etherscan_api_key)
+    address = df_log["address"].iloc[i]
+    topics = df_log["topics"].iloc[i]
+    data = df_log["data"].iloc[i]
+    decoded_event = event_decoder.event_decoder(address, topics, data, dict_abi, fallback_abis)
+    assert(decoded_event["name"] == "Transfer")
+
+    i = 4
+    address = df_log["address"].iloc[i]
+    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict([address], etherscan_api_key)
+    address = df_log["address"].iloc[i]
+    topics = df_log["topics"].iloc[i]
+    data = df_log["data"].iloc[i]
+    decoded_event = event_decoder.event_decoder(address, topics, data, dict_abi, fallback_abis)
+    assert(decoded_event["name"] == "TokensTransferred")
+    
+    ########## ERC 20 Approval ##########
+    tx_ERC_20_Approval = "0x822ddf5837aee5cb46de3c2c62c0590f6bd81f11e46b1ec96e572e66fb338d25"
+    tx_hash = tx_ERC_20_Approval
+    
+    df_log = pickle.load(open(dir_path+r'\tests\test_resources\df_log_tx_ERC_20_Transfer_'+  tx_hash + '.pkl', 'rb'))
+    
+    i = 0
+    address = df_log["address"].iloc[i]
+    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict([address], etherscan_api_key)
+    address = df_log["address"].iloc[i]
+    topics = df_log["topics"].iloc[i]
+    data = df_log["data"].iloc[i]
+    decoded_event = event_decoder.event_decoder(address, topics, data, dict_abi, fallback_abis)
+    assert(decoded_event["name"] == "Approval")
+    
+    ########## ERC 721 Transfer #########
+    tx_ERC_721_Transfer = "0x9e8f42799dffe9f5700e1f871a20a9483e1c84db73c382c31a4412b9a2f83b2b"
+    tx_hash = tx_ERC_721_Transfer    
+    df_log = pickle.load(open(dir_path+r'\tests\test_resources\df_log_tx_ERC_20_Transfer_'+  tx_hash + '.pkl', 'rb'))
+
+    i = 1
+    address = df_log["address"].iloc[i]
+    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict([address], etherscan_api_key)
+    address = df_log["address"].iloc[i]
+    topics = df_log["topics"].iloc[i]
+    data = df_log["data"].iloc[i]
+    decoded_event = event_decoder.event_decoder(address, topics, data, dict_abi, fallback_abis)
+    assert(decoded_event["name"] == "Transfer")
+       
+    # if Event is not in the ABI (provide invalid ABI), the event should be drawn from the ERC-20 standard event
+    dict_abi = {address: "rhubarb"}
+    decoded_event = event_decoder.event_decoder(address, topics, data, dict_abi, fallback_abis)
+    assert(decoded_event["name"] == "Transfer")
+      
+
+
+def test_function_decoder():
+#    dir_path = r"C:\Users\richa\Nextcloud\Cloud Documents\07_Projekte\Process Mining on Blockchain Data\Tracing\trace_based_logging"
+    
+    path = os.path.join(dir_path, "tests\\test_resources", "df_trace_tree_0x75228dce4d82566d93068a8d5d49435216551599_5937093_7000011.pkl")
+    df_log = pickle.load(open(path, "rb"))
+
+    path = os.path.join(dir_path, "tests\\test_resources", "contracts_dapp_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
+    contracts_dapp = pickle.load(open(path, 'rb'))
+
+    df_log = data_preparation.base_transformation(df_log, contracts_dapp)
+
+    port = 8081
+    protocol = "http://"
+    host = "127.0.0.1"
+    node_url = protocol + host + ":" + str(port)
+    
+    path = os.path.join(dir_path, "tests\\test_resources", "dict_abi_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
+    dict_abi = pickle.load(open(path, 'rb'))
+
+
+    df_functions, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_log, dict_abi, node_url, ["CALL"])
+
+    item = df_functions["name"].unique()[1]
+    
+    assert(item == "<Function publicTradeWithLimit(uint8,address,uint256,uint256,uint256,bytes32,bytes32,bytes32,uint256)>")
+
+
+def test_function_decoder_optimized():
+#    dir_path = r"C:\Users\richa\Nextcloud\Cloud Documents\07_Projekte\Process Mining on Blockchain Data\Tracing\trace_based_logging"
+    
+    path = os.path.join(dir_path, "tests\\test_resources", "df_trace_tree_0x75228dce4d82566d93068a8d5d49435216551599_5937093_7000011.pkl")
+    df_log = pickle.load(open(path, "rb"))
+
+    path = os.path.join(dir_path, "tests\\test_resources", "contracts_dapp_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
+    contracts_dapp = pickle.load(open(path, 'rb'))
+
+    df_log = data_preparation.base_transformation(df_log, contracts_dapp)
+
+    port = 8081
+    protocol = "http://"
+    host = "127.0.0.1"
+    node_url = protocol + host + ":" + str(port)
+    
+    path = os.path.join(dir_path, "tests\\test_resources", "dict_abi_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
+    dict_abi = pickle.load(open(path, 'rb'))
+
+
+    df_functions, addresses_not_dapp, txs_function_not_decoded = data_preparation.decode_functions_optimized(df_log, dict_abi, node_url)
+
+    item = df_functions["name"].unique()[1]
+    
+    assert(item == "<Function publicTradeWithLimit(uint8,address,uint256,uint256,uint256,bytes32,bytes32,bytes32,uint256)>")
+
+
+def test_propagate_extraInfo():
+    data = {
+        'Activity': ['create market', 'update market', 'update market', 'create market', 'update market', "non-market event"],
+        'marketId': ['A', 'B', 'A', 'B', 'B', None],
+        'extraInfo': [
+            '{"longDescription":"entry1A","resolutionSource":"entry2A","tags":"entry3A"}',
+            None,
+            None,
+            '{"longDescription":"entry1B","resolutionSource":"entry2B","tags":"entry3B"}',
+            None,
+            None
+        ],
+        "marketType": [1, None, None, 2, None, None]
+    }
+        
+    df = pd.DataFrame(data)
+    df = utils.propagate_extraInfo(df)
+    assert df["resolutionSource"][0] == "entry2A"
+    assert df["longDescription"][3] == "entry1B"
+    assert math.isnan(df["resolutionSource"][5])
+    
+    
+def test_propagate_marketType():
+    data = {
+        'Activity': ['create market', 'update market', 'update market', 'create market', 'update market', "non-market event"],
+        'marketId': ['A', 'B', 'A', 'B', 'B', None],
+        'extraInfo': [
+            '{"longDescription":"entry1A","resolutionSource":"entry2A","tags":"entry3A"}',
+            None,
+            None,
+            '{"longDescription":"entry1B","resolutionSource":"entry2B","tags":"entry3B"}',
+            None,
+            None
+        ],
+        "marketType": [1, None, None, 2, None, None]
+    }
+        
+    df = pd.DataFrame(data)
+    df = utils.propagate_extraInfo(df)
+    df = utils.propagate_marketType(df)
+    assert df["marketType_propagated"][2] == 1
+    assert math.isnan(df["marketType_propagated"][5])
+
+'''
+def test_function():
+    # Opening JSON file
+    with open(root_path+'\resources\test_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29.json', 'r') as openfile: 
+        # Reading from json file
+        json_object = json.load(openfile)
+    assert functions_trace_tree.function(json_object)
+''' 
+
