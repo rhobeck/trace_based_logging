@@ -64,3 +64,8 @@ python main.py
 ## Remarks
 
 Please note that docstrings in this repository were drafted by ChatGPT and edited by the author.
+
+
+## License
+
+This project is distributed under the [MIT license](LICENSE).
