@@ -118,6 +118,7 @@ def main():
         # the following documentation was created by ChatGPT and edited by the author
         """
         Loop to fetch and process transactions and transaction traces for each contract address in set_contracts_lx.
+        Within every iteration of the loop, contracts belonging to the DApp are successively identified.
 
         Think about the deployment structure of smart contracts as trees:
             - There is a deployer as a root externally owned account
