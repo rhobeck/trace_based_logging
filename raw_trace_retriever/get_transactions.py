@@ -6,7 +6,6 @@ from web3 import Web3
 import math
 from logging_config import setup_logging
 
-# Docstrings were created by ChatGPT and edited by the author
 
 """
 This module provides functionalities to fetch and process blockchain transaction data from Etherscan (normal and internal transactions) and a blockchain node via Web3 (blockchain events). It supports fetching normal transactions, internal transactions, and transactions by events for specified Ethereum contracts within a given block range.

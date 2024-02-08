@@ -3,7 +3,6 @@ from logging_config import setup_logging
 logger = setup_logging()
 
 def create_relations(df_trace_tree, contracts_dapp, set_contracts_lx, set_predefined_non_dapp_contracts):
-    # documentation created by ChatGPT and edited by the author
     """
     Analyzes blockchain transaction traces stored in a dataframe to identify CREATE-relationships between contracts related to a DApp. 
     This process involves identifying contracts created by or that created known DApp contracts, and updating the set of contracts associated with the DApp. 

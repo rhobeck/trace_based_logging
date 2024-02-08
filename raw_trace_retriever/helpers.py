@@ -7,7 +7,6 @@ from logging_config import setup_logging
 logger = setup_logging()
 
 def low(x):
-    # documentation and exception handling with ChatGPT
     """
     Converts the input string to lowercase. If the input is not a string, 
     an appropriate error is raised.
@@ -38,7 +37,6 @@ def low(x):
 
 # Check if the server can be reached and the port is open
 def check_socket(host, port):
-    # Documentation created by ChatGPT and edited by the author
     """
     Checks if a given port on a host is open.
 

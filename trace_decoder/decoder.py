@@ -1,3 +1,4 @@
+# The code in this file is entirely copied from a different repository: 
 # https://github.com/iamdefinitelyahuman/eth-event/blob/master/eth_event/main.py
 
 #!/usr/bin/python3

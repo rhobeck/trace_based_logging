@@ -9,7 +9,6 @@ from web3 import Web3, HTTPProvider
 import os
 from logging_config import setup_logging
 
-# The docstrings at the beginning of each function were created by ChatGPT and edited by the author
 
 logger = setup_logging()
 

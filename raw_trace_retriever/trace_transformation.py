@@ -5,7 +5,6 @@ import requests
 import math
 from logging_config import setup_logging
 
-# documentation created by ChatGPT and edited by the author
 """
 This module provides functionalities for interacting with blockchain nodes to retrieve and process transaction trace data. 
 It includes functions for fetching JSON data for transaction hashes, converting transaction data into trace data, 
@@ -44,7 +43,6 @@ INCREMENT_FACTOR = 100
 invalid_tx_hash = set([])
 
 def json_retriever(tx_hash, node_url, max_attempts=15):
-    # documentation created by ChatGPT and edited by the author
     """
     Retrieves JSON data for a given transaction hash from a blockchain node.
 
@@ -123,7 +121,6 @@ def json_retriever(tx_hash, node_url):
 """
 
 def tx_to_trace(df_txs_lx, node_url):
-    # documentation created by ChatGPT and edited by the author
     """
     Converts a DataFrame of transactions into a DataFrame of transaction traces by retrieving trace data from a blockchain node. 
     This function iterates over each transaction in the input DataFrame, retrieves its trace data from the specified node,
@@ -215,7 +212,6 @@ def tx_to_trace(df_txs_lx, node_url):
 
 
 def insert_order(trace_json_lx, start):  
-    # documentation created by ChatGPT and edited by the author
     """
     Recursively appends an order number to the values of specific keys ('from', 'address') in a trace JSON structure.
 
@@ -253,7 +249,6 @@ def insert_order(trace_json_lx, start):
 
 
 def flatten(trace_json_lx, new_trace_json_lx={}):
-    # documentation created by ChatGPT and edited by the author
     """
     Flattens a nested dictionary by recursively merging its nested structures into the parent dictionary.
 

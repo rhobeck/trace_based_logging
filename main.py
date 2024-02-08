@@ -33,7 +33,6 @@ logger = setup_logging()
 
 
 def main(): 
-    # the following docstring was created by ChatGPT and edited by the author
     """
     Main function to orchestrate the retrieval, processing, and saving of blockchain transaction trace data.
 
@@ -115,7 +114,6 @@ def main():
     helpers.check_socket(host, port)
 
     while len(set_contracts_lx) != 0:
-        # the following documentation was created by ChatGPT and edited by the author
         """
         Loop to fetch and process transactions and transaction traces for each contract address in set_contracts_lx.
         Within every iteration of the loop, contracts belonging to the DApp are successively identified.
