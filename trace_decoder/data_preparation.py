@@ -79,14 +79,14 @@ def base_transformation(df_log, contracts_dapp):
     try:
         # df_txs_lx["timeStamp"] = df_txs_lx["timeStamp"].apply(lambda x: int(x))
         # seperating addresses and order IDs
-        df_log["order_calls"] = df_log["from"].apply(lambda x: int(x[43:]) if isinstance(x, str) else 0)
-        df_log["order_events"] = df_log["address"].apply(lambda x: int(x[43:]) if isinstance(x, str) else 0)
-        df_log["order_in_trace"] = df_log["order_calls"] + df_log["order_events"]
-        df_log.drop(["order_calls", "order_events"], axis=1, inplace=True)
+        # df_log["order_calls"] = df_log["from"].apply(lambda x: int(x[43:]) if isinstance(x, str) else 0)
+        # df_log["order_events"] = df_log["address"].apply(lambda x: int(x[43:]) if isinstance(x, str) else 0)
+        # df_log["order_in_trace"] = df_log["order_calls"] + df_log["order_events"]
+        # df_log.drop(["order_calls", "order_events"], axis=1, inplace=True)
 
         # delete the ordering attachement from "from" and "address"
-        df_log["from"] = df_log["from"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
-        df_log["address"] = df_log["address"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
+        # df_log["from"] = df_log["from"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
+        # df_log["address"] = df_log["address"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
 
         # timestamp formatting got lost
         df_log["timeStamp"] = df_log["timeStamp"].apply(lambda x: int(x))
@@ -443,6 +443,8 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list):
         presence of value transfers. Transactions with a 'callvalue' of "0x0" are excluded from the decoding process.
         The function also normalizes contract addresses to lowercase to match the keys in `dict_abi` and relies on
         the external `process_abi` function to initialize Web3 contract objects.
+    
+    TODO: Improve error handling
     """
 
     if not isinstance(df_log, pd.DataFrame):
@@ -460,6 +462,7 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list):
     # The selected data will be decoded. 
     mask = df_log["calltype"].isin(calltype_list)
     df_function_raw = df_log[mask & (df_log["callvalue"] != "0x0")]
+    # df_function_raw = df_log[mask & (df_log["callvalue"] != "0x0") & (pd.notna(df_log["callvalue"]))]
 
     df_function_raw.reset_index(drop=True, inplace=True)
 
@@ -481,7 +484,7 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list):
             logger.error(f"Failed to process ABI for address {address}: {e}")
             addresses_noAbi.add(address)
 
-    logger.info(f"Function decoding started for {str(calltype_list)}")
+    logger.info(f"Function decoding starting for {str(calltype_list)}")
     
     max_row = len(df_function_raw)
     start = time.time()
@@ -498,10 +501,32 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list):
         # Get ABIs from the dictionary of ABIs (only lower case)
         try: 
             contract = contract_objects.get(contract_address_tmp)
+        except:
+            logger.debug("Contract not found in ABIs.")
+            addresses_not_dapp.add(contract_address_tmp)
+            txs_function_not_decoded.append(row["hash"])
+            data = list(row)
+            columns = list(df_function_raw.columns.values)
+            row_data = dict(zip(columns, data))
+            accumulated_data.append(row_data)
+            unknown_functions_count += 1
+        
+        try:
             # The actual decoding happens here.
             # func_obj is the name of the function and its abstract parameters, func_params are the instantiated parameters
             func_obj, func_params = contract.decode_function_input(input_data)
-            
+        
+        except:
+            logger.debug(f"Function paramenters could not be decoded for contract {contract_address_tmp}")
+            addresses_not_dapp.add(contract_address_tmp)
+            txs_function_not_decoded.append(row["hash"])
+            data = list(row)
+            columns = list(df_function_raw.columns.values)
+            row_data = dict(zip(columns, data))
+            accumulated_data.append(row_data)
+            unknown_functions_count += 1
+        
+        try:
             # The decoded data will be prepared for a tabular structure. So column names and row entries are needed. 
             # func_params is a dict with parameters (column names) as keys and values as values.
             # The column names need some processing. The values not.
@@ -561,6 +586,7 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list):
             row_data = dict(zip(columns, data))
             accumulated_data.append(row_data)
         except:
+            logger.debug(f"Data transformation after decoding failed for contract {contract_address_tmp}")
             addresses_not_dapp.add(contract_address_tmp)
             txs_function_not_decoded.append(row["hash"])
             data = list(row)
@@ -627,4 +653,3 @@ def process_abi(abi, contract_address_tmp, node_url):
     except Exception as e:
         logger.error(f"Unexpected error processing ABI for {contract_address_tmp}: {e}")
         raise Exception("Unexpected error during ABI processing.")
-

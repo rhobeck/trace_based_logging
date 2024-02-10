@@ -427,7 +427,7 @@ def main():
 
 
     #################### DELEGATECALLs ####################
-
+    '''
     ##### DELEGATECALL DAPP #####
     mask_dapp = df_log["to"].isin(contracts_dapp)
     df_functions_dapp = df_log[mask_dapp]
@@ -462,7 +462,7 @@ def main():
 
     # free up memory
     del df_delegate_non_dapp
-
+    '''
     #path = os.path.join(dir_path, "resources", "addresses_not_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
     #pickle.dump(addresses_not_dapp, open(path, 'wb'))
     #path = os.path.join(dir_path, "resources", "txs_function_not_decoded_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
@@ -474,7 +474,7 @@ def main():
     logger.info("Starting to save zero-value CALLs / DELEGATECALLs")
 
     # Save zero-value function calls: 
-    mask = df_log["calltype"].isin(["CALL", "DELEGATECALL"])
+    mask = df_log["calltype"].isin(["CALL"])
     df_function_raw = df_log[mask]
     df_functions_zero_value = df_function_raw[df_function_raw["callvalue"]=="0x0"]
     path = os.path.join(dir_path, "resources", "df_functions_zero_value_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
@@ -484,6 +484,18 @@ def main():
 
     # free up memory
     del df_functions_zero_value
+
+    # All Delegate Calls do not have a callvalue attached
+    # Save zero-value function calls: 
+    mask = df_log["calltype"].isin(["DELEGATECALL"])
+    df_delegate_raw = df_log[mask]
+    path = os.path.join(dir_path, "resources", "df_delegate_raw_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+    df_delegate_raw.to_csv(path)
+    path = os.path.join(dir_path, "resources", "df_delegate_raw_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+    pickle.dump(df_delegate_raw, open(path, 'wb'))
+
+    # free up memory
+    del df_delegate_raw
 
     ##### CREATED CONTRACTS ##### 
     

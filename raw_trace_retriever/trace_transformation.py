@@ -187,7 +187,7 @@ def tx_to_trace(df_txs_lx, node_url):
             if json_flag == False:
                 continue
             # insert order of execution; NOTE: THIS NEEDS REFINEMENT, order is appended to "from" and "address"
-            trace_json_lx = insert_order(trace_json_lx, start = [0])
+            trace_json_lx = insert_order(trace_json_lx, counter=[0])
             # flatten the JSON data
             df_flat_json = pd.DataFrame.from_dict(flatten(trace_json_lx, {}), orient="index").T
             # flatten nested JSON data
@@ -211,36 +211,39 @@ def tx_to_trace(df_txs_lx, node_url):
     return df_trace_lx
 
 
-def insert_order(trace_json_lx, start):  
+def insert_order(trace_json_lx, counter):
     """
-    Recursively appends an order number to the values of specific keys ('from', 'address') in a trace JSON structure.
+    Recursively inserts a counter as a new key-value pair in every dictionary within the given data structure.
+    The counter represents the position of the dictionary within the overall structure, including sub-dictionaries.
 
     Args:
-        trace_data (dict | list): The trace data in the form of a dictionary or list containing nested dictionaries.
-        order (list): The current order number to append. Default is 0 and increments with each recursive call.
-                      In hindside I am not sure why the order is determined via the length of a list. Needs revision.
+        data (dict | list): The data in the form of a dictionary or list containing nested dictionaries.
+        counter (list of int): A list containing a single integer that keeps track of the current position. 
+                               Using a list allows the counter to be mutable and thus updated across recursive calls.
 
     Returns:
-        dict | list: The modified trace data with order numbers appended to specified keys.
+        dict | list: The modified data with counters inserted.
+    
+    TODO: Position 2 is unfortunately skipped. But the concept still works, the order is established by inserting positions in the trace.
     """
-    key_strings = ["from", "address"]
-    for key, value in trace_json_lx.items():
-        if key in key_strings:
-            # passing a single variable in the recursion caused copying of the variable inside the instead of updating to the latest value
-            # so the latest value was appended to a list of which the last element was printed
-            # if enumeration by depth of the the JSON file makes more sense: make 'start' an int variable and do start += 1 instead of latest += 1
-            latest=start[len(start)-1]
-            start.append(latest + 1)
-            #print(key, start[len(start)-1])
-            trace_json_lx[key]= str(value) + "_" + str(start[len(start)-1])
-        if isinstance(value, list):
-            for nested_value in value:
-                if isinstance(nested_value, str) or isinstance(nested_value, int):
+    if isinstance(trace_json_lx, dict):
+        # Increment the counter for each new dictionary encountered
+        counter[0] += 1
+        # Insert the counter as a new key-value pair
+        trace_json_lx['order_in_trace'] = counter[0]
+        
+        # Process nested dictionaries or lists
+        for key, value in trace_json_lx.items():
+            if isinstance(value, (dict, list)):
+                insert_order(value, counter)
+    elif isinstance(trace_json_lx, list):
+        # Process each item in the list
+        for item in trace_json_lx:
+            if isinstance(item, str) or isinstance(item, int):
                     pass
-                else:
-                    insert_order(nested_value, start)
-        if isinstance(value, dict):
-            insert_order(value, start)
+            if isinstance(item, (dict, list)):
+                insert_order(item, counter)
+
     return trace_json_lx
 
 # Input: JSON file with nested data containing the calls.

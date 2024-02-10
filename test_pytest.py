@@ -10,6 +10,7 @@ import os
 import pandas as pd
 import math
 import json
+import numpy as np
 
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -131,6 +132,17 @@ def test_txs_to_trace():
     number_of_events = helpers.count_string_occurrences_in_keys(trace_json_lx_read, "topics")
     
     assert len(df_trace_lx) == (number_of_events+number_of_referrals) # == 571
+    
+    # Check if inserted order is okay
+    # Position 2 is unfortunately skipped. But the concepts still works, the order is established by inserting positions.
+    # For improvements in inserting the position in trace, please check trace_transformation.insert_order  
+    assert df_trace_lx["order_in_trace"][0] == 1
+    assert df_trace_lx["order_in_trace"][1] == 3
+    assert df_trace_lx["order_in_trace"][570] == 60
+    assert df_trace_lx["order_in_trace"][568] == 517
+    
+    # Check if number of events in the trace is okay
+    assert len(df_trace_lx[df_trace_lx["address"] == "0x75228dce4d82566d93068a8d5d49435216551599"]) == 18
     
 
 def test_remove_predefined_contracts():
@@ -260,8 +272,7 @@ def test_event_decoder():
       
 
 
-def test_function_decoder():
-#    dir_path = r"C:\Users\richa\Nextcloud\Cloud Documents\07_Projekte\Process Mining on Blockchain Data\Tracing\trace_based_logging"
+ #    dir_path = r"C:\Users\richa\Nextcloud\Cloud Documents\07_Projekte\Process Mining on Blockchain Data\Tracing\trace_based_logging"
     
     path = os.path.join(dir_path, "tests\\test_resources", "df_trace_tree_0x75228dce4d82566d93068a8d5d49435216551599_5937093_7000011.pkl")
     df_log = pickle.load(open(path, "rb"))
@@ -269,6 +280,16 @@ def test_function_decoder():
     path = os.path.join(dir_path, "tests\\test_resources", "contracts_dapp_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
     contracts_dapp = pickle.load(open(path, 'rb'))
 
+    # For establishing proper test data (order_in_trace has been inserted as a proper column in newer version):
+    # TODO: update test data -> apply the following lines once an save the new dataframe as pickle
+    df_log["order_calls"] = df_log["from"].apply(lambda x: int(x[43:]) if isinstance(x, str) else 0)
+    df_log["order_events"] = df_log["address"].apply(lambda x: int(x[43:]) if isinstance(x, str) else 0)
+    df_log["order_in_trace"] = df_log["order_calls"] + df_log["order_events"]
+    df_log.drop(["order_calls", "order_events"], axis=1, inplace=True)
+
+    # delete the ordering attachement from "from" and "address"
+    df_log["from"] = df_log["from"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
+    df_log["address"] = df_log["address"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
     df_log = data_preparation.base_transformation(df_log, contracts_dapp)
 
     port = 8081
@@ -287,7 +308,7 @@ def test_function_decoder():
     assert(item == "<Function publicTradeWithLimit(uint8,address,uint256,uint256,uint256,bytes32,bytes32,bytes32,uint256)>")
 
 
-def test_function_decoder_optimized():
+def test_function_decoder():
 #    dir_path = r"C:\Users\richa\Nextcloud\Cloud Documents\07_Projekte\Process Mining on Blockchain Data\Tracing\trace_based_logging"
     
     path = os.path.join(dir_path, "tests\\test_resources", "df_trace_tree_0x75228dce4d82566d93068a8d5d49435216551599_5937093_7000011.pkl")
@@ -296,8 +317,19 @@ def test_function_decoder_optimized():
     path = os.path.join(dir_path, "tests\\test_resources", "contracts_dapp_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
     contracts_dapp = pickle.load(open(path, 'rb'))
 
-    df_log = data_preparation.base_transformation(df_log, contracts_dapp)
+    # For establishing proper test data (order_in_trace has been inserted as a proper column in newer version):
+    # TODO: update test data -> apply the following lines once an save the new dataframe as pickle
+    df_log["order_calls"] = df_log["from"].apply(lambda x: int(x[43:]) if isinstance(x, str) else 0)
+    df_log["order_events"] = df_log["address"].apply(lambda x: int(x[43:]) if isinstance(x, str) else 0)
+    df_log["order_in_trace"] = df_log["order_calls"] + df_log["order_events"]
+    df_log.drop(["order_calls", "order_events"], axis=1, inplace=True)
 
+    # delete the ordering attachement from "from" and "address"
+    df_log["from"] = df_log["from"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
+    df_log["address"] = df_log["address"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
+
+    df_log = data_preparation.base_transformation(df_log, contracts_dapp)
+    
     port = 8081
     protocol = "http://"
     host = "127.0.0.1"
@@ -307,7 +339,7 @@ def test_function_decoder_optimized():
     dict_abi = pickle.load(open(path, 'rb'))
 
 
-    df_functions, addresses_not_dapp, txs_function_not_decoded = data_preparation.decode_functions_optimized(df_log, dict_abi, node_url)
+    df_functions, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_log, dict_abi, node_url, ["CALL"])
 
     item = df_functions["name"].unique()[1]
     
