@@ -45,6 +45,14 @@ Before running the main script, configure the json files in the project folder.
 - `extract_internal_transactions`: Flag to set to `true` if internal transactions shall be queried from Etherscan.
 - `extract_transactions_by_events`: Flag to set to `true` if blockchain events shall be queried from the Ethereum node.
 - `etherscan_api_key`: Your Etherscan API key for fetching contract ABIs.
+- `dapp_decode_events`: Flag set `true` if events emitted by contracts of the DApp shall be decoded.
+- `dapp_decode_calls_with_ether_transfer`: Flag set `true` if calls with Ether transfers to contracts of the DApp shall be decoded.
+- `dapp_decode_calls_with_no_ether_transfer`: Flag set `true` if calls with no Ether transfers to contracts of the DApp shall be decoded.
+- `dapp_decode_delegatecalls`: Flag set `true` if delegatecalls to contracts of the DApp shall be decoded.
+- `non_dapp_decode_events`: Flag set `true` if events emitted by contracts not belonging to the DApp shall be decoded.
+- `non_dapp_decode_calls_with_ether_transfer`: Flag set `true` if calls with Ether transfer to contracts not belonging to the DApp shall be decoded.
+- `non_dapp_decode_calls_with_no_ether_transfer`: Flag set `true` if calls with no Ether transfer to  contracts not belonging to the DApp shall be decoded.
+- `non_dapp_decode_delegatecalls`: Flag set `true` if delegatecalls to contracts not belonging to the DApp shall be decoded.
 
 `config_custom_events.json`, a file with ABI specifications for decoding the data. Reason: even if the ABI of a contract is not available (on Etherscan), event or functions specified in `config_custom_events.json` can still be decoded. By default this includes ABI specifications to decode the events from the standards ERC-20, ERC-721, ERC-777, and ERC-1155 (and two custom Augur events).
 
