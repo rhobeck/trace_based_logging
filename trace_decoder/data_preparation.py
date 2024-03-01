@@ -383,8 +383,7 @@ def decode_events(df_log, dict_abi):
         except:
             unknown_event_addresses.add(row["address"])
             unknown_event_count += 1
-            pass
-            logger.debug(f"Event topic is not present in given ABI {row['hash']}")
+            logger.debug(f"Event topic is not present in given ABIs {row['hash']}")
             txs_event_not_decoded.append(row["hash"])        
             columns = list(df_events_raw.columns.values)
             data = list(row)
@@ -403,15 +402,13 @@ def decode_events(df_log, dict_abi):
     logger.info(f"Events decoding: DONE. {unknown_event_count} unknown events occurred. Now building dataframe.")
 
     df_events = pd.DataFrame(accumulated_data)
-    
-    logger.debug(f"{unknown_event_count} unknown events occurred")
-    
+      
     return df_events, txs_event_not_decoded, unknown_event_addresses
 
 
 # decoding ABIs could be decoded once in one go 
 
-def decode_functions(df_log, dict_abi, node_url, calltype_list):
+def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag, logging_string):
     """
     Decodes function call data from Ethereum transaction logs using the contract ABIs. It filters transactions based
     on specified call types and non-zero Ether transfer values, then attempts to decode each transaction's input data.
@@ -461,7 +458,11 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list):
     # Note that there is a lot if callvalue == 0 calls. They can also be decoded but for use cases chosen so far its just too much for an off-the shelf laptop to handle (in the current implementation)
     # The selected data will be decoded. 
     mask = df_log["calltype"].isin(calltype_list)
-    df_function_raw = df_log[mask & (df_log["callvalue"] != "0x0")]
+    if zero_value_flag == False:
+        mask_callvalue = df_log["callvalue"] != "0x0"
+    if zero_value_flag == True:
+        mask_callvalue = df_log["callvalue"] == "0x0"
+    df_function_raw = df_log[mask & mask_callvalue]
     # df_function_raw = df_log[mask & (df_log["callvalue"] != "0x0") & (pd.notna(df_log["callvalue"]))]
 
     df_function_raw.reset_index(drop=True, inplace=True)
@@ -484,7 +485,7 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list):
             logger.error(f"Failed to process ABI for address {address}: {e}")
             addresses_noAbi.add(address)
 
-    logger.info(f"Function decoding starting for {str(calltype_list)}")
+    logger.info(f"Function decoding starting for {str(calltype_list)}, number of entries: {len(df_function_raw)}")
     
     max_row = len(df_function_raw)
     start = time.time()
@@ -517,7 +518,7 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list):
             func_obj, func_params = contract.decode_function_input(input_data)
         
         except:
-            logger.debug(f"Function paramenters could not be decoded for contract {contract_address_tmp}")
+            logger.debug(f"Function parameters could not be decoded for contract {contract_address_tmp} in transaction {row['hash']}")
             addresses_not_dapp.add(contract_address_tmp)
             txs_function_not_decoded.append(row["hash"])
             data = list(row)
@@ -599,15 +600,14 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list):
         if index != 0:
             state = round(max_row, -1) / index
             if state in [100/10,100/20,100/30,100/40,100/50,100/60,100/70,100/80,100/90]:
-                ts = datetime.datetime.fromtimestamp(time.time()).strftime('%d-%m-%Y %H:%M:%S')
-                print(ts, "Function decoding: ", str(calltype_list), index, " out of ", max_row, " function calls decoded.")
+                logger.info(f"Function decoding: {logging_string} {str(calltype_list)}, {index} out of {max_row} function calls decoded. Decoding failed for {unknown_functions_count}")
             
-    logger.info(f"Function decoding: DONE. {unknown_functions_count} unknown function calls occurred. Now building dataframe.")
+    logger.info(f"Function decoding: DONE. Total function calls {len(df_function_raw)}. Undecoded function calls {unknown_functions_count}. Now building dataframe.")
     
     # Make the lists a tabular format
     df_function = pd.DataFrame(accumulated_data)
     end = time.time()
-    logger.info(f"Time lapsed for decoding *CALL data {(end-start)}")
+    logger.debug(f"Time lapsed for decoding *CALL data {(end-start)}")
     return df_function, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi
 
 def process_abi(abi, contract_address_tmp, node_url):

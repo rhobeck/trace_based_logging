@@ -177,8 +177,8 @@ def tx_to_trace(df_txs_lx, node_url):
             timestamp=df_txs_lx.iloc[i]['timeStamp']
             blockNumber = df_txs_lx.iloc[i]['blockNumber']
             
-            if (i != 0 and i % 100 == 0) or i == len(df_txs_lx)-1:
-                logger.info(f"Transactions for which traces were retrieved: {i+1}")
+            # if (i != 0 and i % 100 == 0) or i == len(df_txs_lx)-1:
+            #     logger.info(f"Transactions for which traces were retrieved: {i+1}")
 
             # retrieve JSON data
             trace_json_lx, json_flag = json_retriever(tx_hash, node_url)
@@ -193,7 +193,7 @@ def tx_to_trace(df_txs_lx, node_url):
             # flatten nested JSON data
             df_trace_lx_tmp = flatten_nested(df_flat_json, df_trace_lx_tmp, tx_hash, functionName, timestamp, blockNumber)       
 
-        logger.info(f"{c_tmp} transactions of {len(df_txs_lx)} transactions; loop number: {loop_round}")
+        logger.info(f"TRACE REPLAY: {c_tmp} transactions of {len(df_txs_lx)} transactions; loop number: {loop_round}")
 
         c_tmp_minus = c_tmp
         c_tmp+=increment
@@ -204,7 +204,7 @@ def tx_to_trace(df_txs_lx, node_url):
     toc = time.time()
 
     logger.debug(f"SPEEDTEST: Time to recompute and transform transaction traces: {toc - tic}")
-    logger.info(f"LENGTH OF TRACE DF: {len(df_trace_lx)}")
+    logger.info(f"Number of traces for this level: {len(df_trace_lx)}")
 
     df_trace_lx.reset_index(inplace=True, drop=True)
     

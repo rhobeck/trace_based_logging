@@ -1,1 +1,3 @@
 Identify ERC20s and flag them (see Alexander Smirnov, credit him)
+
+"address" should not be a required column name for data transformation (after decoding)

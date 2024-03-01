@@ -78,6 +78,15 @@ def main():
     extract_internal_transactions = config["extract_internal_transactions"]
     extract_transactions_by_events = config["extract_transactions_by_events"]
     
+    dapp_decode_events = config["dapp_decode_events"]
+    dapp_decode_calls_with_ether_transfer = config["dapp_decode_calls_with_ether_transfer"]
+    dapp_decode_calls_with_no_ether_transfer = config["dapp_decode_calls_with_no_ether_transfer"]
+    dapp_decode_delegatecalls = config["dapp_decode_delegatecalls"]
+    non_dapp_decode_events = config["non_dapp_decode_events"]
+    non_dapp_decode_calls_with_ether_transfer = config["non_dapp_decode_calls_with_ether_transfer"]
+    non_dapp_decode_calls_with_no_ether_transfer = config["non_dapp_decode_calls_with_no_ether_transfer"]
+    non_dapp_decode_delegatecalls = config["non_dapp_decode_delegatecalls"]
+    
     etherscan_api_key = config["etherscan_api_key"]
     
     list_predefined_non_dapp_contracts = config["list_predefined_non_dapp_contracts"]
@@ -222,7 +231,6 @@ def main():
 
         level = level+1
         
-        print("THIS WAS LOOP", level-1)
         logger.info(f"THIS WAS LOOP {level-1}")
         
         time.sleep(1)
@@ -291,23 +299,47 @@ def main():
 
     df_log = data_preparation.base_transformation(df_log, contracts_dapp)
 
-
-
     # only events in the traces have the attribute "address", so selecting contract addresses in which events occurred == selecting entries of the attribute "address"
-    addresses_events = set(df_log["address"])
+    try: 
+        addresses_events = df_log["address"].unique()
+        addresses_events = list(addresses_events)
+    except: 
+        logger.debug("Selecting contracts with events failed. No contracts with events?")
+        addresses_events = list()
     # only CALLs have the characteristic "CALL" in the attribute "calltype"
-    # The call came from outside the contract INTO the contract, so the contract address is in the attribute "to" 
-    addresses_calls = set(df_log[df_log["calltype"] == "CALL"]["to"])
+    # The call came from outside the contract INTO the contract, so the contract address is in the attribute "to"
+    try:  
+        addresses_calls = df_log[df_log["calltype"] == "CALL"]["to"].unique()
+        addresses_calls = list(addresses_calls)
+    except: 
+        logger.debug("Selecting contracts with CALLs failed. No contracts with CALLs?")
+        addresses_calls = list()
     # Only DELEGATECALLs have the characteristic "DELEGATECALL" in the attribute "calltype"
     # The call came from outside the contract INTO the contract, so the contract address is in the attribute "to" 
-    addresses_delegatecall = set(df_log[df_log["calltype"] == "DELEGATECALL"]["to"])
+    try: 
+        addresses_delegatecall = df_log[df_log["calltype"] == "DELEGATECALL"]["to"].unique()
+        addresses_delegatecall = list(addresses_delegatecall)
+    except:
+        logger.debug("Selecting contracts with events failed. No contracts with DELEGATECALLs?")
+        addresses_delegatecall = list()
 
     # Make one list of all addresses with relevant entries
-    addresses = addresses_events.union(addresses_calls, addresses_delegatecall)
+    try:
+        addresses = addresses_events + addresses_calls + addresses_delegatecall
+    except:
+        logger.debug("Creating a full list of contracts failed.")
+
+    # Keep unique values
+    addresses = set(addresses)
     # Remove NaNs from the list of addresses
     # https://stackoverflow.com/questions/21011777/how-can-i-remove-nan-from-list-python-numpy
-    addresses = [x for x in addresses if str(x) != 'nan']
+    try:
+        addresses = [x for x in addresses if str(x) != 'nan']
+    except: 
+        logger.debug("Removing NaN values from the list of addresses failed.")
+    
     # Remove capitalized letters. If everything is always lower-case, it's easier to ensure that string comparisons work (because 'a'!='A')
+    logger.debug("Removing capital letters.")
     addresses = list(map(helpers.low, addresses))
 
     logger.info(f"{len(addresses_events)} contracts with events, {len(addresses_calls)} contracts with CALLs, {len(addresses_delegatecall)} contracts with DELEGATECALLs, {len(addresses)} unique contracts to look up ABIs for.")
@@ -338,167 +370,131 @@ def main():
             - a list of addresses for which the event could not be decoded
     """
 
+    ######################################## DAPP ########################################
+
     #################### EVENTS ####################
 
     ##### EVENTS DAPP #####
+    if dapp_decode_events == True:
+        logger.info("Starting to decode EVENTS of DApp contracts")
+        
+        file_name_snipped = "df_events_dapp_"
+        
+        mask_dapp = df_log["address"].isin(contracts_dapp)
+        df_events_dapp = df_log[mask_dapp]
+        
+        df_events_dapp, txs_event_not_decoded_dapp, unknown_event_addresses_dapp = data_preparation.decode_events(df_events_dapp, dict_abi)
 
-    mask_dapp = df_log["address"].isin(contracts_dapp)
-    df_events_dapp = df_log[mask_dapp]
-    
-    logger.info("Starting to decode EVENTS of DApp contracts")
+        # Save the decoded events as CSV and as pickle. 
+        # There is the option to save additional files for debugging, incl.: 
+        #   - a list of transactions for which the event could not be decoded
+        #   - a list of addresses for which the event could not be decoded
+        path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+        df_events_dapp.to_csv(path)
+        path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+        pickle.dump(df_events_dapp, open(path, 'wb'))
+        #path = os.path.join(dir_path, "resources", "txs_event_not_decoded_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+        #pickle.dump(txs_event_not_decoded_dapp, open(path, 'wb'))
+        #path = os.path.join(dir_path, "resources", "unknown_event_addresses_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+        #pickle.dump(unknown_event_addresses_dapp, open(path, 'wb'))
 
-    df_events_dapp, txs_event_not_decoded_dapp, unknown_event_addresses_dapp = data_preparation.decode_events(df_events_dapp, dict_abi)
+        # free up memory
+        del df_events_dapp 
 
-    # Save the decoded events as CSV and as pickle. 
-    # There is the option to save additional files for debugging, incl.: 
-    #   - a list of transactions for which the event could not be decoded
-    #   - a list of addresses for which the event could not be decoded
-    path = os.path.join(dir_path, "resources", "df_events_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
-    df_events_dapp.to_csv(path)
-    path = os.path.join(dir_path, "resources", "df_events_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-    pickle.dump(df_events_dapp, open(path, 'wb'))
-    #path = os.path.join(dir_path, "resources", "txs_event_not_decoded_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-    #pickle.dump(txs_event_not_decoded_dapp, open(path, 'wb'))
-    #path = os.path.join(dir_path, "resources", "unknown_event_addresses_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-    #pickle.dump(unknown_event_addresses_dapp, open(path, 'wb'))
-
-    # free up memory
-    del df_events_dapp
-
-    ##### EVENTS NON-DAPP #####
-    logger.info("Starting to decode EVENTS of NON-DApp contracts")
-
-    mask_dapp = df_log["address"].isin(contracts_dapp)
-    df_events_non_dapp = df_log[~mask_dapp]
-    
-    df_events_non_dapp, txs_event_not_decoded_non_dapp, unknown_event_addresses_non_dapp = data_preparation.decode_events(df_events_non_dapp, dict_abi)
-
-    path = os.path.join(dir_path, "resources", "df_events_non_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
-    df_events_non_dapp.to_csv(path)
-    path = os.path.join(dir_path, "resources", "df_events_non_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-    pickle.dump(df_events_non_dapp, open(path, 'wb'))
-    #path = os.path.join(dir_path, "resources", "txs_event_not_decoded_non_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-    #pickle.dump(txs_event_not_decoded_non_dapp, open(path, 'wb'))
-    #path = os.path.join(dir_path, "resources", "unknown_event_addresses_non_dapp" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-    #pickle.dump(unknown_event_addresses_non_dapp, open(path, 'wb'))
-
-    # free up memory
-    del df_events_non_dapp
-
-
+    if dapp_decode_events == False:
+        logger.info("Skipping EVENTS of DApp contracts. Reason: 'false' flag in config file.")
+        
 
     #################### CALLS ####################
 
 
-    ##### CALL DAPP #####
-    logger.info("Start decoding CALLs to DApp contracts")
+    ##### CALLs DAPP WITH ETHER TRANSFER #####
+    if dapp_decode_calls_with_ether_transfer == True: 
+        logger.info("Start decoding CALLs with Ether transfer to DApp contracts")
 
-    mask_dapp = df_log["to"].isin(contracts_dapp)
-    df_functions_dapp = df_log[mask_dapp]
+        file_name_snipped = "df_call_dapp_with_ether_transfer_"
+        logging_string = "DAPP WITH ETHER TRANSFER"
+                
+        mask_dapp = df_log["to"].isin(contracts_dapp)
+        df_functions_dapp = df_log[mask_dapp]
 
-    calltype_list = ["CALL"]
-    df_functions_dapp, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_functions_dapp, dict_abi, node_url, calltype_list)
+        # Exclude zero value transactions
+        zero_value_flag = False
+        calltype_list = ["CALL"]
+        df_functions_dapp, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_functions_dapp, dict_abi, node_url, calltype_list, zero_value_flag, logging_string)
 
-    path = os.path.join(dir_path, "resources", "df_call_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
-    df_functions_dapp.to_csv(path)
-    path = os.path.join(dir_path, "resources", "df_call_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-    pickle.dump(df_functions_dapp, open(path, 'wb'))
+        path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+        df_functions_dapp.to_csv(path)
+        path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+        pickle.dump(df_functions_dapp, open(path, 'wb'))
 
-    # free up memory
-    del df_functions_dapp
+        # free up memory
+        del df_functions_dapp
 
+    if dapp_decode_calls_with_ether_transfer == False: 
+        logger.info("Skipping CALLs with Ether transfer to DApp contracts. Reason: 'false' flag in config file.")
 
-    ##### CALL NON DAPP #####
-    mask_dapp = df_log["to"].isin(contracts_dapp)
-    df_functions_non_dapp = df_log[~mask_dapp]
+    ##### CALLs DAPP WITH NO ETHER TRANSFER #####    
+    if dapp_decode_calls_with_no_ether_transfer == True: 
+        logger.info("Start decoding CALLs with no Ether transfer to DApp contracts")
+        
+        file_name_snipped = "df_call_dapp_with_no_ether_transfer_"
+        logging_string = "DAPP WITH NO ETHER TRANSFER"
+        
+        mask_dapp = df_log["to"].isin(contracts_dapp)
+        df_functions_dapp = df_log[mask_dapp]
 
-    logger.info("Starting to decode CALLs to NON-DApp contracts")
-    
-    calltype_list = ["CALL"]
-    df_functions_non_dapp, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_functions_non_dapp, dict_abi, node_url, calltype_list)
+        # Exclude zero value transactions
+        zero_value_flag = True
+        calltype_list = ["CALL"]
+        df_functions_dapp, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_functions_dapp, dict_abi, node_url, calltype_list, zero_value_flag, logging_string)
 
-    path = os.path.join(dir_path, "resources", "df_call_non_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
-    df_functions_non_dapp.to_csv(path)
-    path = os.path.join(dir_path, "resources", "df_call_non_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-    pickle.dump(df_functions_non_dapp, open(path, 'wb'))
+        path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+        df_functions_dapp.to_csv(path)
+        path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+        pickle.dump(df_functions_dapp, open(path, 'wb'))
 
-    # free up memory
-    del df_functions_non_dapp
+        # free up memory
+        del df_functions_dapp
 
+    if dapp_decode_calls_with_no_ether_transfer == False: 
+        logger.info("Skipping CALLs with no Ether transfer to DApp contracts. Reason: 'false' flag in config file")
 
     #################### DELEGATECALLs ####################
-    '''
     ##### DELEGATECALL DAPP #####
-    mask_dapp = df_log["to"].isin(contracts_dapp)
-    df_functions_dapp = df_log[mask_dapp]
+    if dapp_decode_delegatecalls == True:
+        logger.info("Starting to decode DELEGATECALLs to DApp contracts")
 
-    logger.info("Starting to decode DELEGATECALLs to DApp contracts")
+        file_name_snipped = "df_delegatecall_dapp_"
+        logging_string = "DAPP"
 
-    calltype_list = ["DELEGATECALL"]
-    df_delegate_dapp, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_functions_dapp, dict_abi, node_url, calltype_list)
+        mask_dapp = df_log["to"].isin(contracts_dapp)
+        df_functions_dapp = df_log[mask_dapp]
 
-    path = os.path.join(dir_path, "resources", "df_delegatecall_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
-    df_delegate_dapp.to_csv(path)
-    path = os.path.join(dir_path, "resources", "df_delegatecall_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-    pickle.dump(df_delegate_dapp, open(path, 'wb'))
+        zero_value_flag = False
+        calltype_list = ["DELEGATECALL"]
+        df_delegate_dapp, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_functions_dapp, dict_abi, node_url, calltype_list, zero_value_flag, logging_string)
 
-    # free up memory
-    del df_delegate_dapp
+        path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+        df_delegate_dapp.to_csv(path)
+        path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+        pickle.dump(df_delegate_dapp, open(path, 'wb'))
 
+        # free up memory
+        del df_delegate_dapp
 
-    ##### DELEGATECALL NON DAPP #####
-    mask_dapp = df_log["to"].isin(contracts_dapp)
-    df_functions_non_dapp = df_log[~mask_dapp]
+    if dapp_decode_delegatecalls == False:
+        logger.info("Skipping DELEGATECALLs to DApp contracts. Reason: 'false' flag in config file.")
 
-    logger.info("Starting to decode DELEGATECALLs to NON-DApp contracts")
-    
-    calltype_list = ["DELEGATECALL"]
-    df_delegate_non_dapp, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_functions_non_dapp, dict_abi, node_url, calltype_list)
-    
-    path = os.path.join(dir_path, "resources", "df_delegatecall_non_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
-    df_delegate_non_dapp.to_csv(path)
-    path = os.path.join(dir_path, "resources", "df_delegatecall_non_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-    pickle.dump(df_delegate_non_dapp, open(path, 'wb'))
-
-    # free up memory
-    del df_delegate_non_dapp
-    '''
     #path = os.path.join(dir_path, "resources", "addresses_not_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
     #pickle.dump(addresses_not_dapp, open(path, 'wb'))
     #path = os.path.join(dir_path, "resources", "txs_function_not_decoded_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
     #pickle.dump(txs_function_not_decoded, open(path, 'wb'))
 
 
-    ##### Zero Value CALLs and DELEGATECALLs #####
-
-    logger.info("Starting to save zero-value CALLs / DELEGATECALLs")
-
-    # Save zero-value function calls: 
-    mask = df_log["calltype"].isin(["CALL"])
-    df_function_raw = df_log[mask]
-    df_functions_zero_value = df_function_raw[df_function_raw["callvalue"]=="0x0"]
-    path = os.path.join(dir_path, "resources", "df_functions_zero_value_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
-    df_functions_zero_value.to_csv(path)
-    path = os.path.join(dir_path, "resources", "df_functions_zero_value_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-    pickle.dump(df_functions_zero_value, open(path, 'wb'))
-
-    # free up memory
-    del df_functions_zero_value
-
-    # All Delegate Calls do not have a callvalue attached
-    # Save zero-value function calls: 
-    mask = df_log["calltype"].isin(["DELEGATECALL"])
-    df_delegate_raw = df_log[mask]
-    path = os.path.join(dir_path, "resources", "df_delegate_raw_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
-    df_delegate_raw.to_csv(path)
-    path = os.path.join(dir_path, "resources", "df_delegate_raw_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-    pickle.dump(df_delegate_raw, open(path, 'wb'))
-
-    # free up memory
-    del df_delegate_raw
-
+        
     ##### CREATED CONTRACTS ##### 
-    
+
     logger.info("Starting to save CREATE-relations")
 
     mask_create = df_log["calltype"].isin(["CREATE", "CREATE2"])
@@ -511,6 +507,105 @@ def main():
     # free up memory
     del df_creations
 
+    ######################################## NON-DAPP ########################################
+    ##### EVENTS NON-DAPP #####
+    if non_dapp_decode_events == True:
+        logger.info("Starting to decode EVENTS of NON-DApp contracts")
+        
+        file_name_snipped = "df_events_non_dapp_"
+
+        mask_dapp = df_log["address"].isin(contracts_dapp)
+        df_events_non_dapp = df_log[~mask_dapp]
+
+        df_events_non_dapp, txs_event_not_decoded_non_dapp, unknown_event_addresses_non_dapp = data_preparation.decode_events(df_events_non_dapp, dict_abi)
+
+        path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+        df_events_non_dapp.to_csv(path)
+        path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+        pickle.dump(df_events_non_dapp, open(path, 'wb'))
+        #path = os.path.join(dir_path, "resources", "txs_event_not_decoded_non_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+        #pickle.dump(txs_event_not_decoded_non_dapp, open(path, 'wb'))
+        #path = os.path.join(dir_path, "resources", "unknown_event_addresses_non_dapp" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+        #pickle.dump(unknown_event_addresses_non_dapp, open(path, 'wb'))
+
+        # free up memory
+        del df_events_non_dapp
+
+    if non_dapp_decode_events == False:
+        logger.info("Skipping EVENTS of NON-DApp contracts. Reason: 'false' flag in config file.")
+
+    ##### CALLs NON DAPP WITH ETHER TRANSFER #####
+    if non_dapp_decode_calls_with_ether_transfer == True:
+        logger.info("Starting to decode CALLs with Ether transfer to NON-DApp contracts")
+        
+        file_name_snipped = "df_call_with_ether_transfer_non_dapp_"
+        logging_string = "NON DAPP WITH ETHER TRANSFER"
+
+        mask_dapp = df_log["to"].isin(contracts_dapp)
+        df_functions_non_dapp = df_log[~mask_dapp]
+
+        zero_value_flag = False
+        calltype_list = ["CALL"]
+        df_functions_non_dapp, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_functions_non_dapp, dict_abi, node_url, calltype_list, zero_value_flag, logging_string)
+
+        path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+        df_functions_non_dapp.to_csv(path)
+        path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+        pickle.dump(df_functions_non_dapp, open(path, 'wb'))
+
+        # free up memory
+        del df_functions_non_dapp
+
+    if non_dapp_decode_calls_with_ether_transfer == False:
+        logger.info("Skipping CALLs with Ether transfer to NON-DApp contracts. Reason: 'false' flag in config file.")
+
+    ##### CALLs NON DAPP WITH NO ETHER TRANSFER #####
+    if non_dapp_decode_calls_with_no_ether_transfer == True:
+        logger.info("Starting to decode CALLs with no Ether transfer to NON-DApp contracts")
+        
+        file_name_snipped = "df_call_with_no_ether_transfer_non_dapp_"
+        logging_string = "NON DAPP WITH NO ETHER TRANSFER"
+
+        mask_dapp = df_log["to"].isin(contracts_dapp)
+        df_functions_non_dapp = df_log[~mask_dapp]
+
+        zero_value_flag = True
+        calltype_list = ["CALL"]
+        df_functions_non_dapp, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_functions_non_dapp, dict_abi, node_url, calltype_list, zero_value_flag, logging_string)
+
+        path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+        df_functions_non_dapp.to_csv(path)
+        path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+        pickle.dump(df_functions_non_dapp, open(path, 'wb'))
+
+        # free up memory
+        del df_functions_non_dapp
+
+    if non_dapp_decode_calls_with_no_ether_transfer == False:
+        logger.info("Skipping CALLs with no Ether transfer to NON-DApp contracts. Reason: 'false' flag in config file.")
+
+    ##### DELEGATECALLs NON DAPP #####
+    if non_dapp_decode_delegatecalls == True:
+        logger.info("Starting to decode DELEGATECALLs to NON-DApp contracts")
+        logging_string = "NON DAPP"
+
+        mask_dapp = df_log["to"].isin(contracts_dapp)
+        df_functions_non_dapp = df_log[~mask_dapp]
+
+        zero_value_flag = False
+        calltype_list = ["DELEGATECALL"]
+        df_delegate_non_dapp, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_functions_non_dapp, dict_abi, node_url, calltype_list, zero_value_flag, logging_string)
+
+        path = os.path.join(dir_path, "resources", "df_delegatecall_non_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+        df_delegate_non_dapp.to_csv(path)
+        path = os.path.join(dir_path, "resources", "df_delegatecall_non_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+        pickle.dump(df_delegate_non_dapp, open(path, 'wb'))
+
+        # free up memory
+        del df_delegate_non_dapp
+        
+    if non_dapp_decode_delegatecalls == False:
+        logger.info("Skipping DELEGATECALLs to NON-DApp contracts. Reason: 'false' flag in config file.")
     #################### LOG CONSTRUCTION ####################
     """
     For handling log construction, there is a module implemented individually and currently stand-alone.

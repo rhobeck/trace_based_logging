@@ -10,14 +10,17 @@
         "0x0000000000000000000000000000000000000000"
     ],
     "min_block": 5926229,
-    "max_block": 5930229,
+    "max_block": 5930573,
     "extract_normal_transactions": true,
     "extract_internal_transactions": true,
     "extract_transactions_by_events": true,
     "etherscan_api_key": "Etherscan API key",
-    "decode_events": true,
-    "decode_calls" : true,
-    "decode_delegatecalls": true,
-    "decode_dapp": true,
-    "decode_non_dapp":true
+    "dapp_decode_events": false,
+    "dapp_decode_calls_with_ether_transfer": false,
+    "dapp_decode_calls_with_no_ether_transfer": false, 
+    "dapp_decode_delegatecalls": false,
+    "non_dapp_decode_events": true,
+    "non_dapp_decode_calls_with_ether_transfer": true,
+    "non_dapp_decode_calls_with_no_ether_transfer": true, 
+    "non_dapp_decode_delegatecalls": true
 }

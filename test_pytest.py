@@ -272,40 +272,32 @@ def test_event_decoder():
       
 
 
- #    dir_path = r"C:\Users\richa\Nextcloud\Cloud Documents\07_Projekte\Process Mining on Blockchain Data\Tracing\trace_based_logging"
-    
+def test_process_abi():
     path = os.path.join(dir_path, "tests\\test_resources", "df_trace_tree_0x75228dce4d82566d93068a8d5d49435216551599_5937093_7000011.pkl")
     df_log = pickle.load(open(path, "rb"))
 
     path = os.path.join(dir_path, "tests\\test_resources", "contracts_dapp_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
     contracts_dapp = pickle.load(open(path, 'rb'))
 
-    # For establishing proper test data (order_in_trace has been inserted as a proper column in newer version):
-    # TODO: update test data -> apply the following lines once an save the new dataframe as pickle
-    df_log["order_calls"] = df_log["from"].apply(lambda x: int(x[43:]) if isinstance(x, str) else 0)
-    df_log["order_events"] = df_log["address"].apply(lambda x: int(x[43:]) if isinstance(x, str) else 0)
-    df_log["order_in_trace"] = df_log["order_calls"] + df_log["order_events"]
-    df_log.drop(["order_calls", "order_events"], axis=1, inplace=True)
+    path = os.path.join(dir_path, "tests\\test_resources", "dict_abi_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
+    dict_abi = pickle.load(open(path, 'rb'))
 
-    # delete the ordering attachement from "from" and "address"
-    df_log["from"] = df_log["from"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
-    df_log["address"] = df_log["address"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
     df_log = data_preparation.base_transformation(df_log, contracts_dapp)
 
     port = 8081
     protocol = "http://"
     host = "127.0.0.1"
     node_url = protocol + host + ":" + str(port)
+
+
+    contract_address_tmp = df_log["to"][722]#"0x24e2b1d415e6e0d04042eaa45dc2a08fc33ca6cd"
+    abi = dict_abi[contract_address_tmp]
+    contract = data_preparation.process_abi(abi, contract_address_tmp, node_url)
+
+    input_data = df_log["input"][722]
+    func_obj, func_params = contract.decode_function_input(input_data)
     
-    path = os.path.join(dir_path, "tests\\test_resources", "dict_abi_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
-    dict_abi = pickle.load(open(path, 'rb'))
-
-
-    df_functions, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_log, dict_abi, node_url, ["CALL"])
-
-    item = df_functions["name"].unique()[1]
-    
-    assert(item == "<Function publicTradeWithLimit(uint8,address,uint256,uint256,uint256,bytes32,bytes32,bytes32,uint256)>")
+    assert(str(func_obj) == "<Function publicTradeWithLimit(uint8,address,uint256,uint256,uint256,bytes32,bytes32,bytes32,uint256)>")
 
 
 def test_function_decoder():
@@ -338,12 +330,13 @@ def test_function_decoder():
     path = os.path.join(dir_path, "tests\\test_resources", "dict_abi_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
     dict_abi = pickle.load(open(path, 'rb'))
 
-
-    df_functions, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_log, dict_abi, node_url, ["CALL"])
+    logging_string = "DAPP WITH ETHER TRANSFER"
+    df_functions, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_log, dict_abi, node_url, ["CALL"], False, logging_string)
 
     item = df_functions["name"].unique()[1]
     
     assert(item == "<Function publicTradeWithLimit(uint8,address,uint256,uint256,uint256,bytes32,bytes32,bytes32,uint256)>")
+
 
 
 def test_propagate_extraInfo():
