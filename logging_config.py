@@ -2,7 +2,7 @@ import logging
 
 def setup_logging():
     logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     
     # Check if the logger already has handlers, there should not be more than 1 handler
     if not logger.handlers:

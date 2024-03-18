@@ -145,6 +145,11 @@ calls_dapp = utils.initial_transformation_calls(calls_dapp, True, txs_reverted)
 
 calls_dapp = utils.rename_attribute(calls_dapp, "Activity", "Activity", mappings["calls_map_dapp"])
 
+# convert hex values
+for hexCol in ["orderId", 'betterOrderId', 'worseOrderId', 'tradeGroupId']:
+    calls_dapp[hexCol] = calls_dapp[hexCol].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else np.nan)
+    #print(df_calls[hexCol].unique())
+
 
 # rename events
 activity_split_candidates = [
@@ -183,6 +188,10 @@ delegatecalls_dapp = pickle.load(open(path, "rb"))
 delegatecalls_dapp = utils.initial_transformation_calls(delegatecalls_dapp, True, txs_reverted)
 
 delegatecalls_dapp = utils.rename_attribute(delegatecalls_dapp, "Activity", "Activity", mappings["delegatecalls_map_dapp"])
+
+for hexCol in ["orderId", 'betterOrderId', 'worseOrderId', 'tradeGroupId']:
+    delegatecalls_dapp[hexCol] = delegatecalls_dapp[hexCol].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else np.nan)
+    print(delegatecalls_dapp[hexCol].unique())
 
 activity_split_candidates = [
     'delegate call to get REP token',
@@ -287,6 +296,11 @@ path = os.path.join(dir_path, "resources", 'df_call_dapp_zero_value_1209_' + bas
 calls_dapp_zero_value = pickle.load(open(path, "rb"))
 calls_dapp_zero_value = utils.initial_transformation_calls(calls_dapp_zero_value, False, txs_reverted)
 
+col_list = ['betterOrderId', 'worseOrderId', 'tradeGroupId','bestOrderId', 'worstOrderId', 'orderId']
+for hexCol in col_list:
+    df_zero_value_calls[hexCol] = df_zero_value_calls[hexCol].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else np.nan)
+    print(df_zero_value_calls[hexCol].unique())
+    
 print("Number of ZERO VALUE CALLS DAPP: ", len(calls_dapp_zero_value))
 utils.count_events(calls_dapp_zero_value, "Activity")
 

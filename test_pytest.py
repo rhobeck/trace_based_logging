@@ -143,7 +143,35 @@ def test_txs_to_trace():
     
     # Check if number of events in the trace is okay
     assert len(df_trace_lx[df_trace_lx["address"] == "0x75228dce4d82566d93068a8d5d49435216551599"]) == 18
+
+def test_insert_trace_position():
+    mock_trace = {
+        "CALL_1":[
+            {"CALL_1.1":"attribute"},
+            {"CALL_1.2":[
+                {"CALL_1.2.1":"attribute"},
+                {"CALL_1.2.2":"attribute"},
+                {"CALL_1.2.3":[
+                    {"CALL_1.2.3.1":"attribute"},
+                    {"CALL_1.2.3.2":"attribute"}
+                ]}
+            ]},
+            {"CALL_1.3":"attribute"}
+        ]
+    }
+    edited_mock_trace = trace_transformation.insert_trace_position(mock_trace)
     
+    assert mock_trace["trace_position_by_depth"]=="1"
+    assert mock_trace["CALL_1"][0]["trace_position_by_depth"]=="1.1"
+    assert mock_trace["CALL_1"][1]["trace_position_by_depth"]=="1.2"
+    assert mock_trace["CALL_1"][2]["trace_position_by_depth"]=="1.3"
+    assert mock_trace["CALL_1"][1]["CALL_1.2"][0]["trace_position_by_depth"]=="1.2.1"
+    assert mock_trace["CALL_1"][1]["CALL_1.2"][1]["trace_position_by_depth"]=="1.2.2"
+    assert mock_trace["CALL_1"][1]["CALL_1.2"][2]["trace_position_by_depth"]=="1.2.3"
+    assert mock_trace["CALL_1"][1]["CALL_1.2"][2]["CALL_1.2.3"][0]["trace_position_by_depth"]=="1.2.3.1"
+    assert mock_trace["CALL_1"][1]["CALL_1.2"][2]["CALL_1.2.3"][1]["trace_position_by_depth"]=="1.2.3.2"
+
+
 
 def test_remove_predefined_contracts():
     set_contracts_lx = ["0x123...", "0x456...", "0x0000000000000000000000000000000000000000", "0x789..."]
