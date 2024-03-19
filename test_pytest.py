@@ -134,17 +134,15 @@ def test_txs_to_trace():
     assert len(df_trace_lx) == (number_of_events+number_of_referrals) # == 571
     
     # Check if inserted order is okay
-    # Position 2 is unfortunately skipped. But the concepts still works, the order is established by inserting positions.
-    # For improvements in inserting the position in trace, please check trace_transformation.insert_order  
-    assert df_trace_lx["order_in_trace"][0] == 1
-    assert df_trace_lx["order_in_trace"][1] == 3
-    assert df_trace_lx["order_in_trace"][570] == 60
-    assert df_trace_lx["order_in_trace"][568] == 517
+    assert df_trace_lx["tracePos"][0] == 1
+    assert df_trace_lx["tracePos"][1] == 3
+    assert df_trace_lx["tracePos"][570] == 60
+    assert df_trace_lx["tracePos"][568] == 517
     
     # Check if number of events in the trace is okay
     assert len(df_trace_lx[df_trace_lx["address"] == "0x75228dce4d82566d93068a8d5d49435216551599"]) == 18
 
-def test_insert_trace_position():
+def test_insert_tracePosDepth():
     mock_trace = {
         "CALL_1":[
             {"CALL_1.1":"attribute"},
@@ -159,17 +157,17 @@ def test_insert_trace_position():
             {"CALL_1.3":"attribute"}
         ]
     }
-    edited_mock_trace = trace_transformation.insert_trace_position(mock_trace)
+    edited_mock_trace = trace_transformation.insert_tracePosDepth(mock_trace)
     
-    assert mock_trace["trace_position_by_depth"]=="1"
-    assert mock_trace["CALL_1"][0]["trace_position_by_depth"]=="1.1"
-    assert mock_trace["CALL_1"][1]["trace_position_by_depth"]=="1.2"
-    assert mock_trace["CALL_1"][2]["trace_position_by_depth"]=="1.3"
-    assert mock_trace["CALL_1"][1]["CALL_1.2"][0]["trace_position_by_depth"]=="1.2.1"
-    assert mock_trace["CALL_1"][1]["CALL_1.2"][1]["trace_position_by_depth"]=="1.2.2"
-    assert mock_trace["CALL_1"][1]["CALL_1.2"][2]["trace_position_by_depth"]=="1.2.3"
-    assert mock_trace["CALL_1"][1]["CALL_1.2"][2]["CALL_1.2.3"][0]["trace_position_by_depth"]=="1.2.3.1"
-    assert mock_trace["CALL_1"][1]["CALL_1.2"][2]["CALL_1.2.3"][1]["trace_position_by_depth"]=="1.2.3.2"
+    assert mock_trace["tracePosDepth"]=="1"
+    assert mock_trace["CALL_1"][0]["tracePosDepth"]=="1.1"
+    assert mock_trace["CALL_1"][1]["tracePosDepth"]=="1.2"
+    assert mock_trace["CALL_1"][2]["tracePosDepth"]=="1.3"
+    assert mock_trace["CALL_1"][1]["CALL_1.2"][0]["tracePosDepth"]=="1.2.1"
+    assert mock_trace["CALL_1"][1]["CALL_1.2"][1]["tracePosDepth"]=="1.2.2"
+    assert mock_trace["CALL_1"][1]["CALL_1.2"][2]["tracePosDepth"]=="1.2.3"
+    assert mock_trace["CALL_1"][1]["CALL_1.2"][2]["CALL_1.2.3"][0]["tracePosDepth"]=="1.2.3.1"
+    assert mock_trace["CALL_1"][1]["CALL_1.2"][2]["CALL_1.2.3"][1]["tracePosDepth"]=="1.2.3.2"
 
 
 

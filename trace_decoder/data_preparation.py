@@ -340,10 +340,10 @@ def decode_events(df_log, dict_abi):
 
             # Existing data in the dataframe df_events_raw (e.g., on the trace) is reused in the new dataframe
             trace_data_values = [
-                row["timeStamp"], row["order_in_trace"], 
+                row["timeStamp"], row["tracePos"], row["tracePosDepth"],
                 row["hash"], row["blockNumber"]
                 ]
-            trace_data_colNames = ["timeStamp", "order_in_trace", "hash", "blockNumber"]
+            trace_data_colNames = ["timeStamp", "tracePos", "tracePosDepth", "hash", "blockNumber"]
 
             # Create a list with the data that was available
             # 1. now decoded name of the event parameter as column name
@@ -554,10 +554,10 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
                                     row["gas"], row["gasUsed"],
                                     row["output"], row["callvalue"],
                                     row["calltype"], row["hash"],
-                                    row["timeStamp"], row["order_in_trace"], 
-                                    row["blockNumber"]
+                                    row["timeStamp"], row["tracePos"], 
+                                    row["tracePosDepth"], row["blockNumber"]
                                     ]
-            trace_data_colNames = ["from", "to", "gas", "gasUsed", "output", "callvalue", "calltype", "hash", "timeStamp", "order_in_trace", "blockNumber"]
+            trace_data_colNames = ["from", "to", "gas", "gasUsed", "output", "callvalue", "calltype", "hash", "timeStamp", "tracePos", "tracePosDepth", "blockNumber"]
 
             # Create a list with the data that is available 
             # 1. name of the object as function name

@@ -187,9 +187,9 @@ def tx_to_trace(df_txs_lx, node_url):
             if json_flag == False:
                 continue
             # insert order of execution
-            trace_json_lx = insert_order(trace_json_lx, counter=[0])
+            trace_json_lx = insert_tracePos(trace_json_lx, counter=[0])
             # insert position in trace by "depth" of the JSON dictionary (subprocesses) 
-            trace_json_lx = insert_trace_position(trace_json_lx)
+            trace_json_lx = insert_tracePosDepth(trace_json_lx)
             # flatten the JSON data
             df_flat_json = pd.DataFrame.from_dict(flatten(trace_json_lx, {}), orient="index").T
             # flatten nested JSON data
@@ -213,7 +213,7 @@ def tx_to_trace(df_txs_lx, node_url):
     return df_trace_lx
 
 
-def insert_order(trace_json_lx, counter):
+def insert_tracePos(trace_json_lx, counter):
     """
     Recursively inserts a counter as a new key-value pair in every dictionary within the given data structure.
     The counter represents the position of the dictionary within the overall structure, including sub-dictionaries.
@@ -232,23 +232,23 @@ def insert_order(trace_json_lx, counter):
         # Increment the counter for each new dictionary encountered
         counter[0] += 1
         # Insert the counter as a new key-value pair
-        trace_json_lx['order_in_trace'] = counter[0]
+        trace_json_lx['tracePos'] = counter[0]
         
         # Process nested dictionaries or lists
         for key, value in trace_json_lx.items():
             if isinstance(value, (dict, list)):
-                insert_order(value, counter)
+                insert_tracePos(value, counter)
     elif isinstance(trace_json_lx, list):
         # Process each item in the list
         for item in trace_json_lx:
             if isinstance(item, str) or isinstance(item, int):
                     pass
             if isinstance(item, (dict, list)):
-                insert_order(item, counter)
+                insert_tracePos(item, counter)
 
     return trace_json_lx
 
-def insert_trace_position(data, depth=1, parent_index=''):
+def insert_tracePosDepth(data, depth=1, parent_index=''):
     """
     Recursively assigns a 'trace_position_by_depth' value to each dictionary in a nested structure,
     starting fresh from each dictionary as a new root. The function keeps track of depth and
@@ -260,26 +260,26 @@ def insert_trace_position(data, depth=1, parent_index=''):
         parent_index (str): The index path from the root to the current item's parent.
 
     Returns:
-        The data with 'trace_position_by_depth' added to each dictionary, indicating its position.
+        The data with "tracePosDepth' ('trace_position_by_depth') added to each dictionary, indicating its position.
     """
     if isinstance(data, dict):
         # Construct the current index based on depth and parent_index
         current_index = f"{parent_index}.{depth}" if parent_index else str(depth)
-        data['trace_position_by_depth'] = current_index.strip(".")
+        data['tracePosDepth'] = current_index.strip(".")
 
         # Initialize counter for each level within a dictionary
         counter = 1
         for key, value in data.items():
             if isinstance(value, (dict, list)):
                 # Recursively process nested dictionaries/lists with an updated depth
-                insert_trace_position(value, depth=counter, parent_index=current_index)
+                insert_tracePosDepth(value, depth=counter, parent_index=current_index)
                 counter += 1
     elif isinstance(data, list):
         # Process each item in the list
         for i, item in enumerate(data, start=1):
             if isinstance(item, (dict, list)):
                 # Recursively process nested dictionaries/lists with an updated depth
-                insert_trace_position(item, depth=i, parent_index=parent_index)
+                insert_tracePosDepth(item, depth=i, parent_index=parent_index)
 
     return data
 
