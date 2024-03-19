@@ -186,8 +186,10 @@ def tx_to_trace(df_txs_lx, node_url):
             # corresponding faulty hash is logged already in json_retriever
             if json_flag == False:
                 continue
-            # insert order of execution; NOTE: THIS NEEDS REFINEMENT, order is appended to "from" and "address"
+            # insert order of execution
             trace_json_lx = insert_order(trace_json_lx, counter=[0])
+            # insert position in trace by "depth" of the JSON dictionary (subprocesses) 
+            trace_json_lx = insert_trace_position(trace_json_lx)
             # flatten the JSON data
             df_flat_json = pd.DataFrame.from_dict(flatten(trace_json_lx, {}), orient="index").T
             # flatten nested JSON data
@@ -245,6 +247,42 @@ def insert_order(trace_json_lx, counter):
                 insert_order(item, counter)
 
     return trace_json_lx
+
+def insert_trace_position(data, depth=1, parent_index=''):
+    """
+    Recursively assigns a 'trace_position_by_depth' value to each dictionary in a nested structure,
+    starting fresh from each dictionary as a new root. The function keeps track of depth and
+    indices at each level without carrying over a parent trace.
+
+    Args:
+        data (dict | list): The data containing nested dictionaries and/or lists.
+        depth (int): The current depth in the nested structure. Starts at 1.
+        parent_index (str): The index path from the root to the current item's parent.
+
+    Returns:
+        The data with 'trace_position_by_depth' added to each dictionary, indicating its position.
+    """
+    if isinstance(data, dict):
+        # Construct the current index based on depth and parent_index
+        current_index = f"{parent_index}.{depth}" if parent_index else str(depth)
+        data['trace_position_by_depth'] = current_index.strip(".")
+
+        # Initialize counter for each level within a dictionary
+        counter = 1
+        for key, value in data.items():
+            if isinstance(value, (dict, list)):
+                # Recursively process nested dictionaries/lists with an updated depth
+                insert_trace_position(value, depth=counter, parent_index=current_index)
+                counter += 1
+    elif isinstance(data, list):
+        # Process each item in the list
+        for i, item in enumerate(data, start=1):
+            if isinstance(item, (dict, list)):
+                # Recursively process nested dictionaries/lists with an updated depth
+                insert_trace_position(item, depth=i, parent_index=parent_index)
+
+    return data
+
 
 # Input: JSON file with nested data containing the calls.
 # Goal: DataFrame with call-type, sender and receiver
