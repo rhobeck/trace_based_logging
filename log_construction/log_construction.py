@@ -11,9 +11,9 @@ import time
 import utils
 import json
 
-from logging_config import setup_logging
+# from logging_config import setup_logging
 
-logger = setup_logging()
+# logger = setup_logging()
 
 list_contracts_lx = ["0x75228dce4d82566d93068a8d5d49435216551599", "0x57f1c2953630056aaadb9bfbda05369e6af7872b"]
 list_contracts_lx = list(map(utils.low, list_contracts_lx))
@@ -52,26 +52,29 @@ contracts_dapp = pickle.load(open(path, 'rb'))
 # if transaction is reverted, flag
 # not all reverted operations of txs are labeled as such, often only one of them is -> propagate the label "reverted" or "out of gas"
 # collect all reverted operations and the hashes; use the set of hashes to flag reverted operations later
-path = os.path.join(dir_path, "resources", 'df_call_dapp_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+path = os.path.join(dir_path, "resources", 'df_events_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+errors_events_dapp = pd.read_csv(path, usecols=['error', "hash"])
+path = os.path.join(dir_path, "resources", 'df_call_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
 errors_calls_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_call_non_dapp_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+path = os.path.join(dir_path, "resources", 'df_call_non_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
 errors_calls_non_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_delegatecall_dapp_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+path = os.path.join(dir_path, "resources", 'df_delegatecall_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
 errors_delegatecalls_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_delegatecall_non_dapp_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+path = os.path.join(dir_path, "resources", 'df_delegatecall_non_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
 errors_delegatecalls_non_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_functions_zero_value_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+path = os.path.join(dir_path, "resources", 'df_functions_zero_value_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
 errors_functions_zero_value_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_creations_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+path = os.path.join(dir_path, "resources", 'df_creations_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
 errors_creations = pd.read_csv(path, usecols=['error', "hash"])
 
 errors = pd.concat(
-    [errors_calls_dapp,
+    [errors_events_dapp,
+    errors_calls_dapp,
     errors_calls_non_dapp,
     errors_delegatecalls_dapp,
     errors_delegatecalls_non_dapp,
     errors_functions_zero_value_dapp,
-    errors_creations
+    errors_creations 
     ]
 )
 
@@ -101,10 +104,16 @@ print("Number of reverted transactions: ", len(txs_reverted))
 path = os.path.join(dir_path, "resources", 'df_events_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
 events_dapp = pickle.load(open(path, "rb"))
 
+events_dapp.columns
+
 events_dapp = utils.initial_transformation_events(events_dapp, True, txs_reverted)
 
 # rename events
 events_dapp = utils.rename_attribute(events_dapp, "Activity", "Activity", mappings["event_map_dapp"])
+
+# re-label contracts 
+events_dapp = utils.label_contracts(events_dapp, mappings, creations, contracts_dapp)
+
 
 if sensitive_events == True:
     activity_split_candidates = [
@@ -130,12 +139,25 @@ if sensitive_events == True:
     events_dapp = pd.merge(events_dapp, market_type_info, on='market', how='left', suffixes=('', '_propagated'))
 
 else: 
-    logger.info("Sensitive events were not created. Reason: sensitive_events-flag == false")
+    #print("Sensitive events were not created. Reason: sensitive_events-flag == false")
+    print("Sensitive events were not created. Reason: sensitive_events-flag == false")
 
 # utils.count_events(events_dapp, "Activity_sensitive")
 
 
-print("Number of EVENTS DAPP: ", len(events_dapp))
+print(f"Number of EVENTS DAPP: {len(events_dapp)} -- Now saving ...")
+
+file_name_snipped = "events_dapp_"
+path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+events_dapp.to_csv(path)
+path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+pickle.dump(events_dapp, open(path, 'wb'))
+
+path = os.path.join(dir_path, "resources", "final", "events_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
+events_dapp.to_csv(path)
+path = os.path.join(dir_path, "resources", "final", "events_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
+pickle.dump(events_dapp, open(path, 'wb'))
+
 
 #differentiate: 
 #    crowdsourcer factory 1 / 2
@@ -146,12 +168,14 @@ print("Number of EVENTS DAPP: ", len(events_dapp))
 
 ######################## CALLS DAPP ########################
  
-path = os.path.join(dir_path, "resources", 'df_call_dapp_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
+path = os.path.join(dir_path, "resources", 'df_call_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
 calls_dapp = pickle.load(open(path, "rb"))
 
 calls_dapp = utils.initial_transformation_calls(calls_dapp, True, txs_reverted)
 
 calls_dapp = utils.rename_attribute(calls_dapp, "Activity", "Activity", mappings["calls_map_dapp"])
+
+calls_dapp = utils.label_contracts(calls_dapp, mappings, creations, contracts_dapp)
 
 # convert hex values
 for hexCol in ["orderId", 'betterOrderId', 'worseOrderId', 'tradeGroupId']:
@@ -176,11 +200,16 @@ if sensitive_events == True:
     # utils.count_events(calls_dapp, "Activity_contract_sensitive")
 
 else: 
-    logger.info("Sensitive events were not created. Reason: sensitive_events-flag == false")
+    print("Sensitive events were not created. Reason: sensitive_events-flag == false")
 
 calls_dapp["Activity"].unique()
 
 print("Number of CALLS DAPP: ", len(calls_dapp))
+
+path = os.path.join(dir_path, "resources", "calls_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
+log_dapp.to_csv(path)
+path = os.path.join(dir_path, "resources", "calls_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
+pickle.dump(log_dapp, open(path, 'wb'))
 
 # save
 #path = os.path.join(dir_path, "resources", "augur_calls_" + str(min_block) + "_" + str(max_block) + ".csv")
@@ -199,6 +228,9 @@ delegatecalls_dapp = pickle.load(open(path, "rb"))
 delegatecalls_dapp = utils.initial_transformation_calls(delegatecalls_dapp, True, txs_reverted)
 
 delegatecalls_dapp = utils.rename_attribute(delegatecalls_dapp, "Activity", "Activity", mappings["delegatecalls_map_dapp"])
+
+delegatecalls_dapp = utils.label_contracts(delegatecalls_dapp, mappings, creations, contracts_dapp)
+
 
 for hexCol in ["orderId", 'betterOrderId', 'worseOrderId', 'tradeGroupId']:
     delegatecalls_dapp[hexCol] = delegatecalls_dapp[hexCol].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else np.nan)
@@ -248,7 +280,7 @@ if sensitive_events == True:
     #delegatecalls_dapp[~delegatecalls_dapp["market"].isnull()]["marketType"]
 
 else: 
-    logger.info("Sensitive events were not created. Reason: sensitive_events-flag == false")
+    print("Sensitive events were not created. Reason: sensitive_events-flag == false")
 
 #utils.count_events(delegatecalls_dapp, "Activity")
 print("Number of DELEGATECALLS DAPP: ", len(delegatecalls_dapp))
@@ -315,6 +347,12 @@ calls_dapp_zero_value = pickle.load(open(path, "rb"))
 calls_dapp_zero_value = utils.initial_transformation_calls(calls_dapp_zero_value, True, txs_reverted)
 
 calls_dapp_zero_value = utils.rename_attribute(calls_dapp_zero_value, "Activity", "Activity", mappings["calls_zero_value_map_dapp"])
+
+calls_dapp_zero_value = utils.label_contracts(calls_dapp_zero_value, mappings, creations, contracts_dapp)
+
+for hexCol in ["orderId", 'betterOrderId', 'worseOrderId', 'tradeGroupId']:
+    delegatecalls_dapp[hexCol] = delegatecalls_dapp[hexCol].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else np.nan)
+    print(delegatecalls_dapp[hexCol].unique())
 
 if sensitive_events == True:
     # rename events
@@ -418,7 +456,7 @@ if sensitive_events == True:
 # utils.count_events(calls_dapp, "Activity_contract_sensitive")
 
 else: 
-    logger.info("Sensitive events were not created. Reason: sensitive_events-flag == false")
+    print("Sensitive events were not created. Reason: sensitive_events-flag == False")
 
 calls_dapp_zero_value["Activity"].unique()
 
@@ -448,11 +486,6 @@ log_dapp.to_csv(path)
 path = os.path.join(dir_path, "resources", log_folder, "log_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
 pickle.dump(log_dapp, open(path, 'wb'))
 
-
-col_list = ['betterOrderId', 'worseOrderId', 'tradeGroupId','bestOrderId', 'worstOrderId', 'orderId']
-for hexCol in col_list:
-    log_dapp[hexCol] = log_dapp[hexCol].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else np.nan)
-    print(log_dapp[hexCol].unique())
     
 print("Number of ZERO VALUE CALLS DAPP: ", len(calls_dapp_zero_value))
 utils.count_events(calls_dapp_zero_value, "Activity")

@@ -183,6 +183,39 @@ def count_events(df_log, col):
         print(len(df_log[df_log[col] == activity]), activity)
 
 
+def label_contracts(df_log, mappings, creations, contracts_dapp):
+    """
+    Relabel the contracts. Contracts are so far known by their 42-character hex address. 
+    Given their are known CAs and some of them are factories, we attempt to relabel them with readable strings
+    """
+    # create a dataframe with contracts that created other contracts. Those should be factories. Labeling them is a manual task (for now). Could be done with source code and LLM.
+    # df_factories = utils.identify_factories(creations, contracts_dapp)
+
+    # now try to identify what the factory contracts are doing and label them
+    # the following approach only works for one tier of factories
+    contract_name_map = label_contracts_by_relative(creations, contracts_dapp, mappings["factory_contract_map"])
+
+    # assign the contract names 
+    df_log['contract_name'] = df_log['address_lower'].map(contract_name_map)
+    df_log['factory_name'] = df_log['address_lower'].map(mappings["factory_contract_map"])
+    # read map_specific_known_contracts to not include the labels in the activity name (e.g., delegators, main contract, REP Token)
+    df_log['contract_name_specifics'] = df_log['address_lower'].map(mappings["map_specific_known_contracts"])
+    # manually tested root deployments (and others) for known contracts
+    # events_dapp[events_dapp["contract_name"] == "RootDeployer_1Creation"]["address"].unique()
+
+    # replace inheritance for known factory contracts
+    mask_factory_name = df_log['factory_name'].notnull()
+    df_log.loc[mask_factory_name, "contract_name"] = df_log.loc[mask_factory_name, "factory_name"]
+    df_log.drop(["factory_name"], inplace=True, axis=1)
+    
+    # replace inheritance for known factory contracts
+    mask_specific_name = df_log['contract_name_specifics'].notnull()
+    df_log.loc[mask_specific_name, "contract_name"] = df_log.loc[mask_specific_name, "contract_name_specifics"]
+    df_log.drop(["contract_name_specifics"], inplace=True, axis=1)    
+    
+    return df_log
+
+
 def create_contract_sensitive_events(df_log, mappings, creations, contracts_dapp, activity_split_candidates):
     # documentation in part with ChatGPT
     """
@@ -215,26 +248,12 @@ def create_contract_sensitive_events(df_log, mappings, creations, contracts_dapp
 
     # now try to identify what the factory contracts are doing and label them
     # the following approach only works for one tier of factories
-    contract_name_map = label_contracts_by_relative(creations, contracts_dapp, mappings["factory_contract_map"])
 
-    # assign the contract names 
-    df_log['contract_name'] = df_log['address_lower'].map(contract_name_map)
-    df_log['factory_name'] = df_log['address_lower'].map(mappings["factory_contract_map"])
-    # read map_specific_known_contracts to not include the labels in the activity name (e.g., delegators, main contract, REP Token)
-    df_log['contract_name_specifics'] = df_log['address_lower'].map(mappings["map_specific_known_contracts"])
-    # manually tested root deployments (and others) for known contracts
-    # events_dapp[events_dapp["contract_name"] == "RootDeployer_1Creation"]["address"].unique()
-
-    # replace inheritance for known factory contracts
-    mask_factory_name = df_log['factory_name'].notnull()
-    df_log.loc[mask_factory_name, "contract_name"] = df_log.loc[mask_factory_name, "factory_name"]
-    df_log.drop(["factory_name"], inplace=True, axis=1)
-    
-    # replace inheritance for known factory contracts
-    mask_specific_name = df_log['contract_name_specifics'].notnull()
-    df_log.loc[mask_specific_name, "contract_name"] = df_log.loc[mask_specific_name, "contract_name_specifics"]
-    df_log.drop(["contract_name_specifics"], inplace=True, axis=1)
-
+    # if contract names do not yet exist, create them:
+    if "contract_name" in df_log.columns:
+        print("Labels for CAs do not yet exist, so they are created.")
+        df_log = label_contracts(df_log, mappings, creations, contracts_dapp)
+        
     list_all_activities = df_log["Activity"].unique()
     excluded_events = list(set(list_all_activities) - set(activity_split_candidates))
 
