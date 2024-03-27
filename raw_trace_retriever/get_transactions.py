@@ -150,40 +150,56 @@ def get_transactions(list_lx, min_block, max_block, internal_flag, etherscan_api
     df_txs_lx=pd.DataFrame()
     count_txs = 0
     for contract_address_tmp in list_lx:
-
-        try: 
-            response_API = send_api_request(contract_address_tmp, min_block, max_block, internal_flag, etherscan_api_key) 
-        except Exception as e:
-            logger.error(f"Failed to connect to Etherscan to retrieve transactions: {e}")
         
-        txs_json_lx = response_API.json()
+        # Retry loop for retrieving transactions from Etherscan
+        for attempt in range(5): 
+            try:
+                try: 
+                    response_API = send_api_request(contract_address_tmp, min_block, max_block, internal_flag, etherscan_api_key) 
+                except Exception as e:
+                    logger.error(f"Failed to connect to Etherscan to retrieve transactions: {e}")
+                
+                txs_json_lx = response_API.json()
+                
+                df_txs_lx, df_txs_lx_tmp = request_mediator(txs_json_lx, df_txs_lx, contract_address_tmp)
+
+                logger.info(f"{string_snipped} transactions for {i+1} / {len(list_lx)} contracts received. Total count of {string_snipped} transactions: {len(df_txs_lx)} {contract_address_tmp}")
+
+            # Etherscan returns <= 10 000 transactions at one request. If more are available, they have to be requested again. 
+                while len(df_txs_lx_tmp) == 10000:
+                    # Maximum number of transactions per block is ~400 txs (2023), i.e., <10,000 txs.
+                    # When number of received txs == 10,000 there is a high chance only a fraction of available txs of the last considered block was returned from Etherscan. 
+                    # Hence, the final block of the last iteration has to be the first block of the next iteration (to get all transactions within the block, NOT min_block_new = min_block_old+1)
+                    df_txs_lx_tmp['blocknumber'] = pd.to_numeric(df_txs_lx_tmp.blockNumber)
+                    min_block = df_txs_lx_tmp.blocknumber.max()
+                    
+                    try: 
+                        response_API = send_api_request(contract_address_tmp, min_block, max_block, internal_flag, etherscan_api_key) 
+                    except Exception as e:
+                        logger.error(f"Failed to connect to Etherscan to retrieve transactions: {e}")
+                    
+                    txs_json_lx = response_API.json()
+                    
+                    df_txs_lx, df_txs_lx_tmp = request_mediator(txs_json_lx, df_txs_lx, contract_address_tmp)
+
+                    logger.info(f"{string_snipped} transactions for {i+1} / {len(list_lx)} contracts received. Total count of {string_snipped} transactions: {len(df_txs_lx)} {contract_address_tmp}")
+                i = i+1
+                # for the next contract in the iteration, the min_block has to be reset to the original block range minimum
+                min_block = min_block_fix 
+            # retry if exception occurred, TODO: more specific exception
+            except:
+                logger.error(f"Transactions could not be received for {contract_address_tmp}. Unspecific error. Retrying ...")
+                time.sleep(DELAY)
+                continue
+            # break the retry loop
+            else:
+                break
+        # skip contract if all retries failed
+        else:
+            logger.error(f"Transaction could not be received for {contract_address_tmp}. Contract is skipped.")
+            time.sleep(DELAY)
+            continue
         
-        df_txs_lx, df_txs_lx_tmp = request_mediator(txs_json_lx, df_txs_lx, contract_address_tmp)
-
-        logger.info(f"{string_snipped} transactions for {i+1} / {len(list_lx)} contracts received. Total count of {string_snipped} transactions: {len(df_txs_lx)} {contract_address_tmp}")
-
-    # Etherscan returns <= 10 000 transactions at one request. If more are available, they have to be requested again. 
-        while len(df_txs_lx_tmp) == 10000:
-            # Maximum number of transactions per block is ~400 txs (2023), i.e., <10,000 txs.
-            # When number of received txs == 10,000 there is a high chance only a fraction of available txs of the last considered block was returned from Etherscan. 
-            # Hence, the final block of the last iteration has to be the first block of the next iteration (to get all transactions within the block, NOT min_block_new = min_block_old+1)
-            df_txs_lx_tmp['blocknumber'] = pd.to_numeric(df_txs_lx_tmp.blockNumber)
-            min_block = df_txs_lx_tmp.blocknumber.max()
-            
-            try: 
-                response_API = send_api_request(contract_address_tmp, min_block, max_block, internal_flag, etherscan_api_key) 
-            except Exception as e:
-                logger.error(f"Failed to connect to Etherscan to retrieve transactions: {e}")
-            
-            txs_json_lx = response_API.json()
-             
-            df_txs_lx, df_txs_lx_tmp = request_mediator(txs_json_lx, df_txs_lx, contract_address_tmp)
-
-            logger.info(f"{string_snipped} transactions for {i+1} / {len(list_lx)} contracts received. Total count of {string_snipped} transactions: {len(df_txs_lx)} {contract_address_tmp}")
-        i = i+1
-        # for the next contract in the iteration, the min_block has to be reset to the original block range minimum
-        min_block = min_block_fix 
-
     # There will be transaction duplicates, duplicates are not necessary, so they are removed
     df_txs_lx.drop_duplicates(subset='hash', keep="last", inplace=True)
     
@@ -236,7 +252,7 @@ def get_transactions_by_events(node_url, contracts, min_block, max_block):
             except Exception as e:
                 logger.error(f"Failed to connect to the blockchain node to retrieve events: {e}")
                 
-            logger.info(f"Number of events: {len(logs)} between {chunk_start} and {chunk_end} for the contract: {contract_address}")
+            logger.debug(f"Number of events: {len(logs)} between {chunk_start} and {chunk_end} for the contract: {contract_address}")
             
            
             i = 1
@@ -261,7 +277,7 @@ def get_transactions_by_events(node_url, contracts, min_block, max_block):
                 
             # logger.debug(f"Done with building the list.")
             
-        logger.info(f"EVENT-BASED transactions for contracts {list(contracts).index(contract_address)+1} / {len(contracts)} Count of transactions: {len(log_data_list)} Block: {chunk_end} / {max_block} {contract_address}")
+        logger.info(f"EVENT-BASED transactions for contracts {list(contracts).index(contract_address)+1} / {len(contracts)} Total count of transactions: {len(log_data_list)} Block: {chunk_end} / {max_block} {contract_address}")
             # ts = datetime.datetime.fromtimestamp(time.time()).strftime('%d-%m-%Y %H:%M:%S')
             # print(ts, "EVENT-BASED transactions for contracts", list(contracts).index(contract_address)+1, "/", len(contracts), " Count of transactions:", len(log_data_list), "Block: ", chunk_end, "/", max_block, " ", contract_address)
 

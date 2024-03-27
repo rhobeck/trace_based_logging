@@ -242,6 +242,8 @@ def main():
     df_trace_tree.to_pickle(path) 
     # pickle.dump(df_trace_tree, open(dir_path+r'\resources\df_trace_tree_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl', 'wb'))
 
+    logger.info(f"Total number of extracted operations: {len(df_trace_tree)}")
+    
     # free up memory
     del df_trace_tree
     del df_trace_lx
@@ -348,11 +350,16 @@ def main():
     # That data is available in the ABIs of the contracts
     # So next, the ABIs are retrieved from Etherscan (if possible) 
     logger.info("Starting to retrieve ABIs.")
+    
+    if (non_dapp_decode_events == False) and (non_dapp_decode_calls_with_ether_transfer == False) and (non_dapp_decode_calls_with_no_ether_transfer == False) and (non_dapp_decode_delegatecalls == False):
+        logger.info("Only retrieving DApp CA ABIs. Decoding of non-DApp CAs disabled in config-file.")
+        addresses = list(set(addresses) & set(contracts_dapp))
+    
     dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict(addresses, etherscan_api_key)
 
     # Intermediate saving of the ABIs and df_log, as both will not change, but something might go wrong down the line
-    path = os.path.join(dir_path, "resources", "addresses_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-    pickle.dump(addresses, open(path, 'wb'))
+    #path = os.path.join(dir_path, "resources", "addresses_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+    #pickle.dump(addresses, open(path, 'wb'))
 
     path = os.path.join(dir_path, "resources", "dict_abi_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
     pickle.dump(dict_abi, open(path, 'wb'))

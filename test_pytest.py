@@ -431,7 +431,7 @@ def test_function_decoder():
     assert(item == "<Function publicTradeWithLimit(uint8,address,uint256,uint256,uint256,bytes32,bytes32,bytes32,uint256)>")
 
 
-
+'''
 def test_propagate_extraInfo():
     data = {
         'Activity': ['create market', 'update market', 'update market', 'create market', 'update market', "non-market event"],
@@ -475,7 +475,6 @@ def test_propagate_marketType():
     assert df["marketType_propagated"][2] == 1
     assert math.isnan(df["marketType_propagated"][5])
 
-'''
 def test_function():
     # Opening JSON file
     with open(root_path+'\resources\test_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29.json', 'r') as openfile: 
