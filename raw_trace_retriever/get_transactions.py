@@ -25,7 +25,7 @@ Constants:
 # The function get_transactions_by_events() works in chunks; here is the definition of the chunk size
 CHUNK_SIZE = 10000
 # At times, recovery times for servers between requests make sense; here is the definition of the recovery time
-DELAY = 0.02
+DELAY = 20
 
 
 # Create a logger
@@ -152,7 +152,7 @@ def get_transactions(list_lx, min_block, max_block, internal_flag, etherscan_api
     for contract_address_tmp in list_lx:
         
         # Retry loop for retrieving transactions from Etherscan
-        for attempt in range(5): 
+        for attempt in range(10): 
             try:
                 try: 
                     response_API = send_api_request(contract_address_tmp, min_block, max_block, internal_flag, etherscan_api_key) 
