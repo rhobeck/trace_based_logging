@@ -206,7 +206,7 @@ def main():
         ### Breaking the loop ###
         # If no additional txs were found, the search is over
         if df_txs_lx.empty == True:
-            logger.info("No additional transactions were found. The process ends as planned.")
+            logger.info("No additional transactions were found. The data extraction ends as planned.")
             break
         
         logger.info(f"Number of new transactions for the next iteration: {len(df_txs_lx)}")

@@ -78,6 +78,7 @@ def create_relations(df_trace_tree, contracts_dapp, set_contracts_lx, set_predef
     # If a deployment was not clean, (e.g., a root deployed more than one DApp), the branches to non-DApp CREATION-relations can be "pruned" by removing those contracts we know do not belong to the DApp anyways.
     # The alternative would be that contracts that do not belong to the DApp are identified as DApp contracts in the next iterations. We would end up with deployment trees of multiple DApps. 
     set_contracts_lx = remove_predefined_contracts(set_contracts_lx, set_predefined_non_dapp_contracts)
+    
 
     """
     if "0x0000000000000000000000000000000000000000".lower() in set_contracts_lx:
@@ -89,6 +90,8 @@ def create_relations(df_trace_tree, contracts_dapp, set_contracts_lx, set_predef
         # print(ts, "0x0000000000000000000000000000000000000000 was not in the contract list")
     """
     contracts_dapp = contracts_dapp.union(creators_and_creations)
+    
+    contracts_dapp = remove_predefined_contracts(contracts_dapp, set_predefined_non_dapp_contracts)    
     
     return contracts_dapp, set_contracts_lx
 

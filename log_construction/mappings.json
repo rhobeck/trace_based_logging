@@ -272,6 +272,7 @@
         "publicFillOrder": "call to fill order"    
     },
     "calls_zero_value_map_dapp" : {
+        "CALL": "call without Ether transfer",
         "publicTradeWithLimit": "call to trade with limit",
         "publicTrade": "call to initiate a trade",
         "publicFillBestOrder": "call to fill best order",

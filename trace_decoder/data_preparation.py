@@ -617,9 +617,27 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
     
     # free up memory
     del df_function_raw
- 
+#    path = os.path.join(dir_path, "resources", 'accumulated_data_calls_zero_value.pkl')
+#    pickle.dump(accumulated_data, open(path, "wb"))
+    
+    # build the dataframe consecutively, the conversion dict->Dataframe may otherwise run out of memory 
+    segment_length = len(accumulated_data) // 5
+    df_function = pd.DataFrame()
+
+    for i in range(5):
+        start_index = i * segment_length
+        end_index = (i + 1) * segment_length if i < 4 else None
+        segment_df = pd.DataFrame(accumulated_data[start_index:end_index])
+        df_function = pd.concat([df_function, segment_df], ignore_index=True)
+
+    del accumulated_data
+
+    # reset index for masking
+    df_function.reset_index(drop=True, inplace=True) 
+    
     # Make the lists a tabular format
-    df_function = pd.DataFrame(accumulated_data)
+    # df_function = pd.DataFrame(accumulated_data)
+
     end = time.time()
     logger.debug(f"Time lapsed for decoding *CALL data {(end-start)}")
     return df_function, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi

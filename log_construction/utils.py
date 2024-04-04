@@ -401,7 +401,7 @@ def find_between(s, first, last):
 
 
 def initial_transformation_calls(df_calls, dapp_flag, txs_reverted):
-
+    df_calls.reset_index(drop=True)
     df_calls["address_lower"] = df_calls[~df_calls["to"].isnull()]["to"].apply(lambda x: x.lower())
     
     if dapp_flag == True: 
