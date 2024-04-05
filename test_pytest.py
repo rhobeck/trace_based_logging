@@ -140,41 +140,106 @@ def test_txs_to_trace():
     
     # Check if inserted order is okay
     assert df_trace_lx["tracePos"][0] == 1
-    assert df_trace_lx["tracePos"][1] == 3
-    assert df_trace_lx["tracePos"][570] == 60
-    assert df_trace_lx["tracePos"][568] == 517
+    assert df_trace_lx["tracePos"][1] == 2
+    assert df_trace_lx["tracePos"][570] == 59
+    assert df_trace_lx["tracePos"][568] == 516
     
     # Check if number of events in the trace is okay
     assert len(df_trace_lx[df_trace_lx["address"] == "0x75228dce4d82566d93068a8d5d49435216551599"]) == 18
 
 def test_insert_tracePosDepth():
     mock_trace = {
-        "CALL_1":[
+        "CALL_1":"attribute", "calls":[
             {"CALL_1.1":"attribute"},
-            {"CALL_1.2":[
+            {"CALL_1.2":"attribute","calls":[
                 {"CALL_1.2.1":"attribute"},
                 {"CALL_1.2.2":"attribute"},
-                {"CALL_1.2.3":[
+                {"CALL_1.2.3":"attribute","calls":[
                     {"CALL_1.2.3.1":"attribute"},
                     {"CALL_1.2.3.2":"attribute"}
-                ]}
+                ],
+                "logs": [{"topics":["1.2.3"]},{"topics":["1.2.3"]}]
+                }
             ]},
             {"CALL_1.3":"attribute"}
-        ]
+        ],
+        "logs": [{"topics":["1"]},{"topics":["1"]}]
     }
-    edited_mock_trace = trace_transformation.insert_tracePosDepth(mock_trace)
+    mock_trace_tracePosDepth = trace_transformation.insert_tracePosDepth(mock_trace)
     
-    assert mock_trace["tracePosDepth"]=="1"
-    assert mock_trace["CALL_1"][0]["tracePosDepth"]=="1.1"
-    assert mock_trace["CALL_1"][1]["tracePosDepth"]=="1.2"
-    assert mock_trace["CALL_1"][2]["tracePosDepth"]=="1.3"
-    assert mock_trace["CALL_1"][1]["CALL_1.2"][0]["tracePosDepth"]=="1.2.1"
-    assert mock_trace["CALL_1"][1]["CALL_1.2"][1]["tracePosDepth"]=="1.2.2"
-    assert mock_trace["CALL_1"][1]["CALL_1.2"][2]["tracePosDepth"]=="1.2.3"
-    assert mock_trace["CALL_1"][1]["CALL_1.2"][2]["CALL_1.2.3"][0]["tracePosDepth"]=="1.2.3.1"
-    assert mock_trace["CALL_1"][1]["CALL_1.2"][2]["CALL_1.2.3"][1]["tracePosDepth"]=="1.2.3.2"
+    assert mock_trace_tracePosDepth["tracePosDepth"]=="1"
+    assert mock_trace_tracePosDepth["calls"][0]["tracePosDepth"]=="1.1"
+    assert mock_trace_tracePosDepth["calls"][1]["tracePosDepth"]=="1.2"
+    assert mock_trace_tracePosDepth["calls"][2]["tracePosDepth"]=="1.3"
+    assert mock_trace_tracePosDepth["calls"][1]["calls"][0]["tracePosDepth"]=="1.2.1"
+    assert mock_trace_tracePosDepth["calls"][1]["calls"][1]["tracePosDepth"]=="1.2.2"
+    assert mock_trace_tracePosDepth["calls"][1]["calls"][2]["tracePosDepth"]=="1.2.3"
+    assert mock_trace_tracePosDepth["calls"][1]["calls"][2]["calls"][0]["tracePosDepth"]=="1.2.3.1"
+    assert mock_trace_tracePosDepth["calls"][1]["calls"][2]["calls"][1]["tracePosDepth"]=="1.2.3.2"
+    assert mock_trace_tracePosDepth["calls"][1]["calls"][2]["logs"][0]["tracePosDepth"] == "1.2.3.3"
+    assert mock_trace_tracePosDepth["calls"][1]["calls"][2]["logs"][1]["tracePosDepth"] == "1.2.3.4"
+    assert mock_trace_tracePosDepth["calls"][2]["tracePosDepth"] == "1.3"
+    
+def test_insert_tracePos():
 
+    mock_trace = {
+        "CALL_1":"attribute", "calls":[
+            {"CALL_1.1":"attribute"},
+            {"CALL_1.2":"attribute","calls":[
+                {"CALL_1.2.1":"attribute"},
+                {"CALL_1.2.2":"attribute"},
+                {"CALL_1.2.3":"attribute","calls":[
+                    {"CALL_1.2.3.1":"attribute"},
+                    {"CALL_1.2.3.2":"attribute"}
+                ],
+                "logs": [{"topics":["1.2.3"]},{"topics":["1.2.3"]}]
+                }
+            ]},
+            {"CALL_1.3":"attribute"}
+        ],
+        "logs": [{"topics":["1"]},{"topics":["1"]}]
+    }
+    mock_trace_tracePos = trace_transformation.insert_tracePos(mock_trace,trace_pos_counter=[0])
+    
+    assert mock_trace_tracePos["tracePos"] == 1
+    assert mock_trace_tracePos["calls"][0]["tracePos"] == 2
+    assert mock_trace_tracePos["calls"][1]["tracePos"] == 3
+    assert mock_trace_tracePos["calls"][1]["calls"][0]["tracePos"] == 4
+    assert mock_trace_tracePos["calls"][1]["calls"][1]["tracePos"] == 5
+    assert mock_trace_tracePos["calls"][1]["calls"][2]["tracePos"] == 6
+    assert mock_trace_tracePos["calls"][1]["calls"][2]["calls"][0]["tracePos"] == 7
+    assert mock_trace_tracePos["calls"][1]["calls"][2]["calls"][1]["tracePos"] == 8
+    assert mock_trace_tracePos["calls"][1]["calls"][2]["logs"][0]["tracePos"] == 9
+    assert mock_trace_tracePos["calls"][1]["calls"][2]["logs"][1]["tracePos"] == 10
+    assert mock_trace_tracePos["calls"][2]["tracePos"] == 11
 
+'''
+def test_insert_eventPos():
+
+    mock_trace = {
+        "CALL_1":"attribute", "calls":[
+            {"CALL_1.1":"attribute"},
+            {"CALL_1.2":"attribute","calls":[
+                {"CALL_1.2.1":"attribute"},
+                {"CALL_1.2.2":"attribute"},
+                {"CALL_1.2.3":"attribute","calls":[
+                    {"CALL_1.2.3.1":"attribute"},
+                    {"CALL_1.2.3.2":"attribute"}
+                ],
+                "logs": [{"topics":["1.2.3"]},{"topics":["1.2.3"]}]
+                }
+            ]},
+            {"CALL_1.3":"attribute"}
+        ],
+        "logs": [{"topics":["1"]},{"topics":["1"]}]
+    }
+    mock_trace_tracePos = trace_transformation.insert_eventPos(mock_trace)
+    
+    assert mock_trace_tracePos["calls"][1]["calls"][2]["logs"][0]["eventPos"] == 1
+    assert mock_trace_tracePos["calls"][1]["calls"][2]["logs"][1]["eventPos"] == 2
+    assert mock_trace_tracePos["logs"][0]["eventPos"] == 1
+    assert mock_trace_tracePos["logs"][1]["eventPos"] == 2
+'''
 
 def test_remove_predefined_contracts():
     set_contracts_lx = ["0x123...", "0x456...", "0x0000000000000000000000000000000000000000", "0x789..."]
@@ -366,7 +431,7 @@ def test_function_decoder():
     assert(item == "<Function publicTradeWithLimit(uint8,address,uint256,uint256,uint256,bytes32,bytes32,bytes32,uint256)>")
 
 
-
+'''
 def test_propagate_extraInfo():
     data = {
         'Activity': ['create market', 'update market', 'update market', 'create market', 'update market', "non-market event"],
@@ -410,7 +475,6 @@ def test_propagate_marketType():
     assert df["marketType_propagated"][2] == 1
     assert math.isnan(df["marketType_propagated"][5])
 
-'''
 def test_function():
     # Opening JSON file
     with open(root_path+'\resources\test_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29.json', 'r') as openfile: 

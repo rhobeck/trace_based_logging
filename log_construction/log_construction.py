@@ -10,6 +10,12 @@ import pickle
 import time
 import utils
 import json
+from web3 import Web3
+
+
+# from logging_config import setup_logging
+
+# logger = setup_logging()
 
 list_contracts_lx = ["0x75228dce4d82566d93068a8d5d49435216551599", "0x57f1c2953630056aaadb9bfbda05369e6af7872b"]
 list_contracts_lx = list(map(utils.low, list_contracts_lx))
@@ -19,6 +25,8 @@ list_contracts_lx = set(list_contracts_lx)
 min_block = 5926229
 max_block = 11229577
 
+log_folder = "log_0404"
+sensitive_events = False
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 path = os.path.join(dir_path, "mappings.json")
@@ -47,53 +55,73 @@ contracts_dapp = pickle.load(open(path, 'rb'))
 # if transaction is reverted, flag
 # not all reverted operations of txs are labeled as such, often only one of them is -> propagate the label "reverted" or "out of gas"
 # collect all reverted operations and the hashes; use the set of hashes to flag reverted operations later
-path = os.path.join(dir_path, "resources", 'df_call_dapp_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-errors_calls_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_call_non_dapp_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-errors_calls_non_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_delegatecall_dapp_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+'''
+path = os.path.join(dir_path, "resources", 'df_events_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+errors_events_dapp = pd.read_csv(path, usecols=['error', "hash"])
+path = os.path.join(dir_path, "resources", 'df_events_non_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+errors_events_non_dapp = pd.read_csv(path, usecols=['error', "hash"])
+path = os.path.join(dir_path, "resources", 'df_call_dapp_with_ether_transfer_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+errors_calls_dapp_with_ether_transfer = pd.read_csv(path, usecols=['error', "hash"])
+path = os.path.join(dir_path, "resources", 'df_call_with_ether_transfer_non_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+errors_calls_with_ether_transfer_non_dapp = pd.read_csv(path, usecols=['error', "hash"])
+path = os.path.join(dir_path, "resources", 'df_delegatecall_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
 errors_delegatecalls_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_delegatecall_non_dapp_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+path = os.path.join(dir_path, "resources", 'df_delegatecall_non_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
 errors_delegatecalls_non_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_functions_zero_value_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-errors_functions_zero_value_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_creations_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+path = os.path.join(dir_path, "resources", 'df_call_with_no_ether_transfer_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+errors_calls_with_no_ether_transfer_dapp = pd.read_csv(path, usecols=['error', "hash"])
+path = os.path.join(dir_path, "resources", 'df_call_with_no_ether_transfer_non_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+errors_calls_with_no_ether_transfer_non_dapp = pd.read_csv(path, usecols=['error', "hash"])
+path = os.path.join(dir_path, "resources", 'df_creations_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
 errors_creations = pd.read_csv(path, usecols=['error', "hash"])
 
 errors = pd.concat(
-    [errors_calls_dapp,
-    errors_calls_non_dapp,
+    [errors_events_dapp,
+    errors_events_non_dapp,
+    errors_calls_dapp_with_ether_transfer,
+    errors_calls_with_ether_transfer_non_dapp,
     errors_delegatecalls_dapp,
     errors_delegatecalls_non_dapp,
-    errors_functions_zero_value_dapp,
-    errors_creations
+    errors_calls_with_no_ether_transfer_dapp,
+    errors_calls_with_no_ether_transfer_non_dapp,
+    errors_creations 
     ]
 )
+'''
+path = os.path.join(dir_path, "resources", 'df_trace_tree_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
+errors = pd.read_csv(path, usecols=["error", "hash"])
 
 errors.reset_index(inplace=True, drop=True)
 
 mask_reverted = errors["error"].isin([
-    "execution reverted", 
-    "out of gas",
-    "invalid jump destination",
-    "contract creation code storage out of gas"
+    'out of gas', 
+    'invalid jump destination',
+    'execution reverted',
+    'write protection',
+    'invalid opcode: INVALID',
+    'contract creation code storage out of gas'
     ])
 txs_reverted = set(errors[mask_reverted]["hash"])
 
 # free up memory
-del errors_calls_dapp
-del errors_calls_non_dapp
-del errors_delegatecalls_dapp
-del errors_delegatecalls_non_dapp
-del errors_functions_zero_value_dapp
+'''
+del errors_events_dapp
+del errors_events_non_dapp
+del errors_calls_dapp_with_ether_transfer,
+del errors_calls_with_ether_transfer_non_dapp,
+del errors_delegatecalls_dapp,
+del errors_delegatecalls_non_dapp,
+del errors_calls_with_no_ether_transfer_dapp,
+del errors_calls_with_no_ether_transfer_non_dapp,
 del errors_creations
+'''
 del errors
 
 print("Number of reverted transactions: ", len(txs_reverted))
 
 ######################## EVENTS DAPP ########################
 
-path = os.path.join(dir_path, "resources", 'df_events_dapp_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
+path = os.path.join(dir_path, "resources", 'df_events_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
 events_dapp = pickle.load(open(path, "rb"))
 
 events_dapp = utils.initial_transformation_events(events_dapp, True, txs_reverted)
@@ -101,33 +129,50 @@ events_dapp = utils.initial_transformation_events(events_dapp, True, txs_reverte
 # rename events
 events_dapp = utils.rename_attribute(events_dapp, "Activity", "Activity", mappings["event_map_dapp"])
 
-activity_split_candidates = [
-    "transfer tokens", 
-    "give approval to transfer tokens",
-    "mint tokens",
-    "burn tokens"
-]
-
-events_dapp = utils.create_contract_sensitive_events(events_dapp, mappings, creations, contracts_dapp, activity_split_candidates)
+# re-label contracts 
+events_dapp = utils.label_contracts(events_dapp, mappings, creations, contracts_dapp)
 
 # name token types in tokens minted / transferred / burned
 events_dapp = utils.rename_attribute(events_dapp, "tokenType", "tokenType_name", mappings["token_map"])
-# add token type names to the activity names
-events_dapp = utils.combine_attributes(events_dapp, "Activity", "tokenType_name", "Activity_token_sensitive", ", token type: ", [])
 
-# Propagate the extracted information to all activities with the same 'marketId'
-market_info = utils.propagate_extraInfo(events_dapp)
-events_dapp = pd.merge(events_dapp, market_info, on='market', how='left')
+if sensitive_events == True:
+    activity_split_candidates = [
+        "transfer tokens", 
+        "give approval to transfer tokens",
+        "mint tokens",
+        "burn tokens"
+    ]
 
-# Propagate the 'marketType' information to all activities with the same 'marketId'
-market_type_info = utils.propagate_marketType(events_dapp)
-events_dapp = pd.merge(events_dapp, market_type_info, on='market', how='left', suffixes=('', '_propagated'))
+    events_dapp = utils.create_contract_sensitive_events(events_dapp, mappings, creations, contracts_dapp, activity_split_candidates)
 
+    
+    # add token type names to the activity names
+    events_dapp = utils.combine_attributes(events_dapp, "Activity", "tokenType_name", "Activity_token_sensitive", ", token type: ", [])
+
+    # Propagate the extracted information to all activities with the same 'marketId'
+    market_info = utils.propagate_extraInfo(events_dapp)
+    events_dapp = pd.merge(events_dapp, market_info, on='market', how='left')
+
+    # Propagate the 'marketType' information to all activities with the same 'marketId'
+    market_type_info = utils.propagate_marketType(events_dapp)
+    events_dapp = pd.merge(events_dapp, market_type_info, on='market', how='left', suffixes=('', '_propagated'))
+
+else: 
+    #print("Sensitive events were not created. Reason: sensitive_events-flag == false")
+    print("Sensitive events were not created. Reason: sensitive_events-flag == false")
 
 # utils.count_events(events_dapp, "Activity_sensitive")
 
 
-print("Number of EVENTS DAPP: ", len(events_dapp))
+print(f"Number of EVENTS DAPP: {len(events_dapp)} -- Now saving ...")
+
+file_name_snipped = "events_dapp_"
+path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+events_dapp.to_csv(path)
+path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+pickle.dump(events_dapp, open(path, 'wb'))
+
+del events_dapp
 
 #differentiate: 
 #    crowdsourcer factory 1 / 2
@@ -137,113 +182,134 @@ print("Number of EVENTS DAPP: ", len(events_dapp))
 
 
 ######################## CALLS DAPP ########################
- 
-path = os.path.join(dir_path, "resources", 'df_call_dapp_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
+
+path = os.path.join(dir_path, "resources", 'df_call_dapp_with_ether_transfer_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
 calls_dapp = pickle.load(open(path, "rb"))
 
 calls_dapp = utils.initial_transformation_calls(calls_dapp, True, txs_reverted)
 
 calls_dapp = utils.rename_attribute(calls_dapp, "Activity", "Activity", mappings["calls_map_dapp"])
 
+calls_dapp = utils.label_contracts(calls_dapp, mappings, creations, contracts_dapp)
+
 # convert hex values
 for hexCol in ["orderId", 'betterOrderId', 'worseOrderId', 'tradeGroupId']:
     calls_dapp[hexCol] = calls_dapp[hexCol].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else np.nan)
     #print(df_calls[hexCol].unique())
 
+if sensitive_events == True:
+    # rename events
+    activity_split_candidates = [
+        "call and transfer Ether",
+        "call trade with limit"
+    ]
 
-# rename events
-activity_split_candidates = [
-    "call and transfer Ether",
-    "call trade with limit"
-]
+    calls_dapp = utils.create_contract_sensitive_events(calls_dapp, mappings, creations, contracts_dapp, activity_split_candidates)
 
-calls_dapp = utils.create_contract_sensitive_events(calls_dapp, mappings, creations, contracts_dapp, activity_split_candidates)
+    # Propagate the extracted information to all activities with the same 'marketId'
+    calls_dapp = pd.merge(calls_dapp, market_info, on='market', how='left')
 
-# Propagate the extracted information to all activities with the same 'marketId'
-calls_dapp = pd.merge(calls_dapp, market_info, on='market', how='left')
+    # Propagate the 'marketType' information to all activities with the same 'marketId'
+    calls_dapp = pd.merge(calls_dapp, market_type_info, on='market', how='left', suffixes=('', '_propagated'))
 
-# Propagate the 'marketType' information to all activities with the same 'marketId'
-calls_dapp = pd.merge(calls_dapp, market_type_info, on='market', how='left', suffixes=('', '_propagated'))
+    # utils.count_events(calls_dapp, "Activity_contract_sensitive")
 
-# utils.count_events(calls_dapp, "Activity_contract_sensitive")
+else: 
+    print("Sensitive events were not created. Reason: sensitive_events-flag == false")
 
-calls_dapp["Activity"].unique()
+#calls_dapp["Activity"].unique()
 
-print("Number of CALLS DAPP: ", len(calls_dapp))
+print(f"Number of CALLs DAPP: {len(calls_dapp)} -- Now saving ...")
 
-# save
-#path = os.path.join(dir_path, "resources", "augur_calls_" + str(min_block) + "_" + str(max_block) + ".csv")
-#calls_dapp.to_csv(path)
-#path = os.path.join(dir_path, "resources", "augur_calls_" + str(min_block) + "_" + str(max_block) + ".pkl")
-#pickle.dump(calls_dapp, open(path, 'wb'))
-
+file_name_snipped = "calls_dapp_"
+path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+calls_dapp.to_csv(path)
+path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+pickle.dump(calls_dapp, open(path, 'wb'))
+del calls_dapp
 
 
 
 ##################### DELEGATECALL DAPP ########################
 
-path = os.path.join(dir_path, "resources", 'df_delegatecall_dapp_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
+path = os.path.join(dir_path, "resources", 'df_delegatecall_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
 delegatecalls_dapp = pickle.load(open(path, "rb"))
 
 delegatecalls_dapp = utils.initial_transformation_calls(delegatecalls_dapp, True, txs_reverted)
 
 delegatecalls_dapp = utils.rename_attribute(delegatecalls_dapp, "Activity", "Activity", mappings["delegatecalls_map_dapp"])
 
+delegatecalls_dapp = utils.label_contracts(delegatecalls_dapp, mappings, creations, contracts_dapp)
+
+
 for hexCol in ["orderId", 'betterOrderId', 'worseOrderId', 'tradeGroupId']:
     delegatecalls_dapp[hexCol] = delegatecalls_dapp[hexCol].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else np.nan)
     print(delegatecalls_dapp[hexCol].unique())
 
-activity_split_candidates = [
-    'delegate call to get REP token',
-    'delegate call to approve',
-    'delegate call to get universe',
-    'delegate call to get fee window',
-    'delegate call to get stake',
-    'delegate call to get payout distribution hash',
-    'delegate call to initialize',
-    'delegate call to get balance',
-    'delegate call to transfer token on behalf of the owner',
-    'delegate call to get total supply',
-    'delegate call to get market',
-    'delegate call to get outcome',
-    'delegate call to get allowance',
-    'delegate call to transfer token',
-    'delegate call to check for container for share token',
-    'delegate call to check if container container for reporting participant',
-    'delegate call and transfer Ether',
-    'delegate call to redeem',
-    'delegate call to contribute',
-    'delegate call to get size',
-    'delegate call to migrate',
-    'delegate call to check validity',
-    'delegate call to deposit Ether',
-    'delegate call to check if designated reporter was correct',
-    'delegate call to check if designated reporter showed',
-    'delegate call to get payout numerator',
-    'delegate call to liquidate losing'
-    ]
 
-delegatecalls_dapp = utils.create_contract_sensitive_events(delegatecalls_dapp, mappings, creations, contracts_dapp, activity_split_candidates)
+if sensitive_events == True:
+    activity_split_candidates = [
+        'delegate call to get REP token',
+        'delegate call to approve',
+        'delegate call to get universe',
+        'delegate call to get fee window',
+        'delegate call to get stake',
+        'delegate call to get payout distribution hash',
+        'delegate call to initialize',
+        'delegate call to get balance',
+        'delegate call to transfer token on behalf of the owner',
+        'delegate call to get total supply',
+        'delegate call to get market',
+        'delegate call to get outcome',
+        'delegate call to get allowance',
+        'delegate call to transfer token',
+        'delegate call to check for container for share token',
+        'delegate call to check if container container for reporting participant',
+        'delegate call and transfer Ether',
+        'delegate call to redeem',
+        'delegate call to contribute',
+        'delegate call to get size',
+        'delegate call to migrate',
+        'delegate call to check validity',
+        'delegate call to deposit Ether',
+        'delegate call to check if designated reporter was correct',
+        'delegate call to check if designated reporter showed',
+        'delegate call to get payout numerator',
+        'delegate call to liquidate losing'
+        ]
 
-# Propagate the extracted information to all activities with the same 'marketId'
-delegatecalls_dapp = pd.merge(delegatecalls_dapp, market_info, on='market', how='left')
+    delegatecalls_dapp = utils.create_contract_sensitive_events(delegatecalls_dapp, mappings, creations, contracts_dapp, activity_split_candidates)
 
-# Propagate the 'marketType' information to all activities with the same 'marketId'
-delegatecalls_dapp = pd.merge(delegatecalls_dapp, market_type_info, on='market', how='left', suffixes=('', '_propagated'))
+    # Propagate the extracted information to all activities with the same 'marketId'
+    delegatecalls_dapp = pd.merge(delegatecalls_dapp, market_info, on='market', how='left')
 
-#delegatecalls_dapp[~delegatecalls_dapp["market"].isnull()]["tags"]
-#delegatecalls_dapp[~delegatecalls_dapp["market"].isnull()]["marketType"]
+    # Propagate the 'marketType' information to all activities with the same 'marketId'
+    delegatecalls_dapp = pd.merge(delegatecalls_dapp, market_type_info, on='market', how='left', suffixes=('', '_propagated'))
 
-#utils.count_events(delegatecalls_dapp, "Activity")
-print("Number of DELEGATECALLS DAPP: ", len(delegatecalls_dapp))
+    #delegatecalls_dapp[~delegatecalls_dapp["market"].isnull()]["tags"]
+    #delegatecalls_dapp[~delegatecalls_dapp["market"].isnull()]["marketType"]
 
-mask = delegatecalls_dapp["Activity"] == "delegate call to transfer token"
-pd.set_option('display.max_columns', 500)
-delegatecalls_dapp[mask]
+else: 
+    print("Sensitive events were not created. Reason: sensitive_events-flag == false")
+
+utils.count_events(delegatecalls_dapp, "Activity")
+
+print(f"Number of DELEGATECALLs DAPP: {len(delegatecalls_dapp)} -- Now saving ...")
+
+file_name_snipped = "delegatecalls_dapp_"
+path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+delegatecalls_dapp.to_csv(path)
+path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+pickle.dump(delegatecalls_dapp, open(path, 'wb'))
+del delegatecalls_dapp
+
+#mask = delegatecalls_dapp["Activity"] == "delegate call to transfer token"
+#pd.set_option('display.max_columns', 500)
+#delegatecalls_dapp[mask]
 
 
 ######################## EVENTS NON-DAPP ########################
-
+'''
 path = os.path.join(dir_path, "resources", 'df_events_non_dapp_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
 events_non_dapp = pickle.load(open(path, "rb"))
 
@@ -256,7 +322,7 @@ events_non_dapp = utils.rename_attribute(events_non_dapp, "Activity", "Activity"
 
 print("Number of EVENTS NON-DAPP: ", len(events_non_dapp))
 
-'''
+
 ######################## CALLS NON-DAPP ########################
 
 # Most of the calls are from exchanges; those could be differentiated by (batches of) address(es) 
@@ -287,23 +353,161 @@ delegatecalls_non_dapp = utils.rename_attribute(delegatecalls_non_dapp, "Activit
 print("Number of DELEGATECALLS NON-DAPP: ", len(delegatecalls_non_dapp))
 '''
 
-'''
+
 ###################################### ZERO VALUE ######################################
 
 ######################## ZERO VALUE CALLS DAPP ########################
 
-path = os.path.join(dir_path, "resources", 'df_call_dapp_zero_value_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
-calls_dapp_zero_value = pickle.load(open(path, "rb"))
-calls_dapp_zero_value = utils.initial_transformation_calls(calls_dapp_zero_value, False, txs_reverted)
 
-col_list = ['betterOrderId', 'worseOrderId', 'tradeGroupId','bestOrderId', 'worstOrderId', 'orderId']
-for hexCol in col_list:
-    df_zero_value_calls[hexCol] = df_zero_value_calls[hexCol].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else np.nan)
-    print(df_zero_value_calls[hexCol].unique())
-    
-print("Number of ZERO VALUE CALLS DAPP: ", len(calls_dapp_zero_value))
+path = os.path.join(dir_path, "resources", 'df_call_with_no_ether_transfer_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
+calls_dapp_zero_value = pickle.load(open(path, "rb"))
+
+calls_dapp_zero_value.reset_index(drop=True, inplace=True)
+calls_dapp_zero_value = utils.initial_transformation_calls(calls_dapp_zero_value, True, txs_reverted)
+
+calls_dapp_zero_value = utils.rename_attribute(calls_dapp_zero_value, "Activity", "Activity", mappings["calls_zero_value_map_dapp"])
+
+calls_dapp_zero_value = utils.label_contracts(calls_dapp_zero_value, mappings, creations, contracts_dapp)
+
+for hexCol in ["orderId", 'betterOrderId', 'worseOrderId', 'tradeGroupId']:
+    calls_dapp_zero_value[hexCol] = calls_dapp_zero_value[hexCol].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else np.nan)
+    print(calls_dapp_zero_value[hexCol].unique())
+
+if sensitive_events == True:
+    # rename events
+    activity_split_candidates = [
+        "call to set controller",
+        "call to initialize crowdsourcer",
+        "call to check if initialization happened",
+        "call to initialize",
+        "call to create",
+        "call to get dispute round duration in seconds",
+        "call to check if fork happened",
+        "call to get REP token",
+        "call to create REP token",
+        "call to get parent universe",
+        "call to log REP token transferred",
+        "call to log fee window creation",
+        "call to get timestamp",
+        "call to create fee token",
+        "call to create map",
+        "call to create share token",
+        "call to check if known universe",
+        "call to check if container market",
+        "call to create order",
+        "call for trusted transfer",
+        "call to find bounding orders",
+        "call to log order creation",
+        "call to fill order",
+        "call to buy complete sets",
+        "call to log order filling",
+        "call to increment open interest",
+        "call to log share tokens transfer",
+        "call to log share token minted",
+        "call to check if container for share token",
+        "call to check if container for fee window",
+        "call to cancel order",
+        "call to lor order cancellation",
+        "call to fill best order",
+        "call to get or cache designated reporter stake",
+        "call to get or create next fee window",
+        "call to check if container for reporting participant",
+        "call to log fee token minted",
+        "call to check if container for fee token",
+        "call to initiate a trade",
+        "call to sell complete sets",
+        "call to decrement open interest",
+        "call to get or cache reporting fee divisor",
+        "call to get REP price in Atto ETH",
+        "call to log share token burned",
+        "call to buy participation token",
+        "call to trade with limit",
+        "call to fill best order with limit",
+        "call to sell complete sets (public)",
+        "call to log complete sets sold",
+        "call to create dispute crowdsourcer",
+        "call to notify about dispute crowdsourcer creation",
+        "call to log dispute crowdsourcer contribution",
+        "call to get dispute threshold for fork",
+        "call to log dispute crowdsourcer completion",
+        "call to log dispute crowdsourcer tokens minted",
+        "call to get forking market",
+        "call to decrement open interest from market",
+        "call to log market finalization",
+        "call to get or create fee window before",
+        "call to log fee token burning",
+        "call to claim trading proceeds",
+        "call to log trading proceeds claim",
+        "call to log dispute crowdsourcer tokens burned",
+        "call to log dispute crowdsourcer redemption",
+        "call to log complete set purchase",
+        "call to log dispute crowdsourcer tokens transfer",
+        "call to contribute",
+        "call to check if disputed",
+        "call to get REP",
+        "call to dispute",
+        "call to withdraw proceeds",
+        "call to check if finalized",
+        "call to get dispute token address",
+        "call to approve manager to spend dispute tokens",
+        "call to finalize",
+        "call to withdraw fees",
+        "call to get contract fee receiver",
+        "call fee receiver",
+        "call to withdraw contribution",
+        "call to get total contribution",
+        "call to get total fees offered",
+        "call to buy complete sets with cash (public)",
+        "call to buy (public)",
+        "call to transfer ownership",
+        "call to set REP price in Atto ETH",
+        "call to approve"
+    ]
+
+    calls_dapp_zero_value = utils.create_contract_sensitive_events(calls_dapp_zero_value, mappings, creations, contracts_dapp, activity_split_candidates)
+
+    # Propagate the extracted information to all activities with the same 'marketId'
+    calls_dapp_zero_value = pd.merge(calls_dapp_zero_value, market_info, on='market', how='left')
+
+    # Propagate the 'marketType' information to all activities with the same 'marketId'
+    calls_dapp_zero_value = pd.merge(calls_dapp_zero_value, market_type_info, on='market', how='left', suffixes=('', '_propagated'))
+
+# utils.count_events(calls_dapp, "Activity_contract_sensitive")
+
+    calls_dapp_zero_value["Activity_raw"] = calls_dapp_zero_value["Activity"]
+
+    mask_token = ~calls_dapp_zero_value["Activity_token_sensitive"].isnull()
+    calls_dapp_zero_value.loc[mask_token, "Activity"] =  calls_dapp_zero_value.loc[mask_token, "Activity_token_sensitive"]
+
+    mask_contract = ~calls_dapp_zero_value["Activity_contract_sensitive"].isnull()
+    calls_dapp_zero_value.loc[mask_contract, "Activity"] = calls_dapp_zero_value.loc[mask_contract, "Activity_contract_sensitive"]
+
+    calls_dapp_zero_value.loc[~mask_contract & ~mask_token, "Activity"] = calls_dapp_zero_value.loc[~mask_contract & ~mask_token, "Activity"]
+
+else: 
+    print("Sensitive events were not created. Reason: sensitive_events-flag == False")
+
+calls_dapp_zero_value["Activity"].unique()
+
+calls_dapp_zero_value.reset_index(inplace=True, drop=True)
+if "functionName" in calls_dapp_zero_value.columns:
+    print("deleting column 'functionName'")
+    calls_dapp_zero_value.drop(["functionName"], inplace=True, axis=1)
+
+
+print(f"Number of ZERO VALUE CALLS DAPP: {len(calls_dapp_zero_value)} -- Now saving ...")
+
+file_name_snipped = "calls_dapp_zero_value_"
+path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+calls_dapp_zero_value.to_csv(path)
+path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+pickle.dump(calls_dapp_zero_value, open(path, 'wb'))
+
 utils.count_events(calls_dapp_zero_value, "Activity")
 
+del calls_dapp_zero_value
+
+'''
 ######################## ZERO VALUE CALLS NON-DAPP ########################
 
 path = os.path.join(dir_path, "resources", 'df_call_non_dapp_zero_value_1209_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
@@ -332,26 +536,40 @@ print("Number of ZERO VALUE DELEGATECALLS NON-DAPP: ", len(delegatecalls_non_dap
 utils.count_events(delegatecalls_non_dapp_zero_value, "Activity")
 '''
 
-######################## CREATIONS ########################
+######################## CREATIONS DAPP ########################
 
 creations_dapp = creations[creations["to"].isin(contracts_dapp)]
 creations_dapp.reset_index(inplace = True, drop = True) 
 
-creations_dapp.loc[creations_dapp, "Activity"] = "create new contract"
+creations_dapp["dapp"] = True
+
+creations_dapp["Activity"] = "create new contract"
+
+print(f"Number of CREATEs DAPP: {len(creations_dapp)} -- Now saving ...")
+
+file_name_snipped = "creations_dapp_"
+path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+creations_dapp.to_csv(path)
+path = os.path.join(dir_path, "resources", log_folder, file_name_snipped  + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+pickle.dump(creations_dapp, open(path, 'wb'))
+
+'''
+######################## CREATIONS NON-DAPP ########################
 
 creations_non_dapp = creations[~creations["to"].isin(contracts_dapp)]
 creations_non_dapp.reset_index(inplace = True, drop = True) 
 
 creations_non_dapp.loc[creations_non_dapp, "Activity"] = "create new contract"
+'''
 
 ######################## CONSOLIDATE ########################
-
+'''
 path = os.path.join(dir_path, "resources", "events_non_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
 events_non_dapp.to_csv(path)
 path = os.path.join(dir_path, "resources", "events_non_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
 pickle.dump(events_non_dapp, open(path, 'wb'))
 del events_non_dapp
-'''
+
 path = os.path.join(dir_path, "resources", "calls_non_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
 calls_non_dapp.to_csv(path)
 path = os.path.join(dir_path, "resources", "calls_non_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
@@ -366,38 +584,28 @@ del delegatecalls_non_dapp
 '''
 
 
-log_dapp = pd.concat([
-    events_dapp, 
-    calls_dapp, 
-    delegatecalls_dapp,
-#    events_non_dapp, 
-#    calls_non_dapp, 
-#    delegatecalls_non_dapp,
-    #calls_dapp_zero_value,
-    #calls_non_dapp_zero_value,
-    #delegatecalls_dapp_zero_value,
-    #delegatecalls_non_dapp_zero_value,
-#    creations_non_dapp,
-    creations_dapp
-    ])
-
-#del events_dapp
-del calls_dapp
+print("Starting to concatenate.")
+log_dapp = calls_dapp_zero_value.copy()
+del calls_dapp_zero_value
+print("+zero-value calls")
+log_dapp = pd.concat([log_dapp, delegatecalls_dapp], ignore_index=True)
 del delegatecalls_dapp
-#del events_non_dapp
-#del calls_non_dapp 
-#del delegatecalls_non_dapp
-#calls_dapp_zero_value,
-#calls_non_dapp_zero_value,
-#delegatecalls_dapp_zero_value,
-#delegatecalls_non_dapp_zero_value,
+print("+delegatecalls")
+log_dapp = pd.concat([log_dapp, calls_dapp], ignore_index=True)
+del calls_dapp
+print("+calls")
+log_dapp = pd.concat([log_dapp, events_dapp], ignore_index=True)
+del events_dapp
+print("+events")
+log_dapp = pd.concat([log_dapp, creations_dapp], ignore_index=True)
 del creations_dapp
-#del creations_non_dapp
+print("+ creations")
 
-path = os.path.join(dir_path, "resources", "events_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
-events_dapp.to_csv(path)
-path = os.path.join(dir_path, "resources", "events_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
-pickle.dump(events_dapp, open(path, 'wb'))
+
+path = os.path.join(dir_path, "resources", "log_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
+log_dapp.to_csv(path)
+path = os.path.join(dir_path, "resources", "log_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
+pickle.dump(log_dapp, open(path, 'wb'))
 del events_dapp
 '''
 path = os.path.join(dir_path, "resources", "calls_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
@@ -424,6 +632,235 @@ path = os.path.join(dir_path, "resources", "creations_non_dapp_augur_" + str(min
 pickle.dump(creations_non_dapp, open(path, 'wb'))
 del creations_non_dapp
 '''
+
+dir_path = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..'))
+
+path = os.path.join(dir_path, 'config.json')
+
+with open(path, 'r') as file:
+    config = json.load(file)
+port = config["port"]
+protocol = config["protocol"]
+host = config["host"]
+node_url = protocol + host + ":" + str(port)
+
+address_dict = {
+    "address": {
+        "dapp": True,
+        "type": "EOA/CA"   
+    }
+}
+
+
+columns_events = ["from", # EOAs, DApp contracts, Non-DApp contracts
+ 'to', # EOAs, DApp contracts, Non-DApp contracts
+ 'address', # DApp contracts
+ '_from', # EOAs, DApp contracts, Non-DApp contracts
+ '_to', # EOAs, DApp contracts, Non-DApp contracts
+ 'crowdsourcer', # DApp contracts (crowdsourcers)
+ 'market', # DApp contracts (markets)
+ '_owner', # EOAs, DApp contracts, Non-DApp contracts
+ '_address', # DApp contracts
+ '_spender', # DApp contracts, Non-DApp contracts
+ 'target', # EOAs / users
+ 'token', # DApp contracts (Tokens)
+ 'feeWindow', # DApp contracts (fee windows)
+ 'marketCreator', # EOAs / users
+ 'creator', # EOAs / users
+ 'shareToken', # DApp contracts (SHARE tokens)
+ 'filler', # EOAs / users
+ 'sender', # EOAs / users
+ 'reporter', # EOAs / users
+ 'account', # EOAs / users
+ 'disputeCrowdsourcer', # DApp contracts (Dispute crowdsourcers)
+ 'contributor', # EOAs / users
+ 'contractAuthor', # EOAs as deployer
+ 'executor', # EOAs / users
+ 'owner', # EOAs and Non-DApp contracts
+ 'spender', # DApp contracts (REP tokens, inkl. REP v2)
+]
+
+columns_calls_dapp = [
+ 'from', # EOAs, DApp contracts
+ 'to', # DApp contracts
+ 'address', # DApp contracts
+ 'denominationToken', # DApp contracts (Delegator)
+ 'designatedReporterAddress', # EOAs / users
+ 'sender', # EOAs / users
+ 'market', # DApp contracts (markets)
+ ]
+
+columns_delegatecalls_dapp = [
+ 'from', # DApp contracts
+ 'to', # DApp contracts
+ 'spender', # DApp contracts, Non-Dapp contracts
+ 'denominationToken', # DApp contract (Delegator)
+ 'designatedReporterAddress', # EOAs / users
+ 'source', # EOAs / users, DApp contracts, Non-DApp contracts 
+ 'destination', # EOAs / users, DApp contracts, Non-DApp contracts
+ 'owner', # EOAs / users, DApp contracts, Non-DApp contracts
+ 'creator', # EOAs / users
+ 'feeWindow', # DApp contracts (fee windows)
+ 'market', # DApp contracts (markets)
+ 'designatedReporter', # EOAs / users
+ 'sender', # EOAs / users
+ 'reporter', # EOAs / users
+ 'target', # DApp contracts (Initial Reporter, Dispute Crowdsourcer)
+ 'buyer', # EOAs / users
+ 'participant', # EOAs / users, DApp contracts (Disputer)
+ 'redeemer', # EOAs / users
+ 'newOwner', # EOAs / users
+]
+
+columns_calls_zero_value_dapp = [
+ 'from', # EOAs / users, DApp contracts
+ 'to', # DApp contracts
+ 'controller', # DApp contracts, Non-Dapp contracts
+ 'market', # DApp contracts (Markets)
+ 'owner', # EOAs / users, DApp contracts
+ 'target', # EOAs / users (there are a lot more unique addresses that the expected number of users)
+ 'from_function_internal', # EOAs / users, DApp contracts
+ 'to_function_internal', # EOAs / users, DApp contracts, Non-DApp contracts
+ 'feeWindow', # DApp contracts (Fee Window)
+ 'marketCreator', # EOAs / users
+ 'designatedReporter', # EOAs / users
+ 'creator', # EOAs / users
+ 'token', # DApp contract (Delegator)
+ 'shareToken', # DApp contracts (Share Token)
+ 'filler', # EOAs / users
+ 'sender', # EOAs / users
+ 'reporter', # EOAs / users
+ 'account', # EOAs / users
+ 'disputeCrowdsourcer', # DApp contracts (Dispute Crowdsourcer)
+ 'shareHolder', # EOAs / users
+ 'contributor', # EOAs / users
+ 'feeReceiver', # EOAs / users
+ 'newOwner', # EOAs / users
+ 'spender', # DApp contracts (REP tokens, inkl. REP v2)
+]
+
+
+
+def define_addresses(columns, df):
+    addresses = list()
+    for column in columns:
+        addresses = addresses + list(df[column].unique())
+    set(addresses)
+    addresses = {x for x in addresses if pd.notna(x)}
+    addresses = {x for x in addresses if x != "nan"}
+    return addresses
+
+contracts_dapp
+
+addresses_calls_zero_dapp = define_addresses(columns_calls_zero_value_dapp, calls_dapp_zero_value)
+del calls_dapp_zero_value
+
+path = os.path.join(dir_path, "resources", 'df_events_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
+events_dapp = pickle.load(open(path, "rb"))
+addresses_events_dapp = define_addresses(columns_events, events_dapp)
+del events_dapp
+
+path = os.path.join(dir_path, "resources", 'df_call_dapp_with_ether_transfer_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
+calls_dapp = pickle.load(open(path, "rb"))
+addresses_calls_dapp = define_addresses(columns_calls_dapp, calls_dapp)
+del calls_dapp
+
+path = os.path.join(dir_path, "resources", 'df_delegatecall_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
+delegatecalls_dapp = pickle.load(open(path, "rb"))
+addresses_delegatecalls_dapp = define_addresses(columns_delegatecalls_dapp, delegatecalls_dapp)
+del delegatecalls_dapp
+
+addresses = contracts_dapp | addresses_events_dapp | addresses_calls_dapp | addresses_calls_zero_dapp | addresses_delegatecalls_dapp
+
+path = os.path.join(dir_path, "resources", "addresses_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".txt")
+with open(path, "w") as output:
+    output.write(str(addresses))
+path = os.path.join(dir_path, "resources", "addresses_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+pickle.dump(addresses, open(path, 'wb'))
+
+address_dict = annotate_addresses(addresses, node_url)
+
+path = os.path.join(dir_path, "resources", log_folder, "address_dict_" + str(min_block) + "_" + str(max_block) + ".pkl")
+pickle.dump(address_dict, open(path, 'wb'))
+
+def annotate_addresses(addresses, node_url):
+    w3 = Web3(Web3.HTTPProvider(node_url))
+    contract_name_map = utils.label_contracts_by_relative(creations, contracts_dapp, mappings["factory_contract_map"])
+    address_dict = {}
+    for address in addresses:
+             
+        dapp_flag = dapp_check(address, contracts_dapp)
+        
+        address_type = address_type_check(address, w3)
+
+        contract_label = label_contract(address, mappings, contract_name_map)
+            
+        address_dict[address] = {"dapp_flag": dapp_flag, "type": address_type, "contract_label": contract_label}
+
+    return address_dict
+
+
+address_dict = address_dict_2
+
+def address_type_check(address, w3):
+    address_checksum = Web3.toChecksumAddress(address)    
+    byte_res = w3.eth.getCode(address_checksum)
+    
+    if byte_res.hex() == "0x":
+        address_type = "EOA"
+    else:
+        address_type = "CA"
+
+    return address_type
+
+
+def dapp_check(address, contracts_dapp):
+    # Check if contract is part of DApp
+    if address in contracts_dapp:
+        dapp_flag = "dapp"
+    else: 
+        dapp_flag = "non_dapp"
+    return dapp_flag
+
+
+def label_contract(address, mappings, contract_name_map):
+    """
+    Relabel the contracts. Contracts are so far known by their 42-character hex address. 
+    Given their are known CAs and some of them are factories, we attempt to relabel them with readable strings
+    """
+    address_lower = address.lower()
+    contract_name = None
+
+    # Factory child: if the CA is a result of the factory, assign a factory result name
+    try:
+        contract_name = contract_name_map[address_lower]
+    except KeyError:
+        pass
+
+    # Factory: if the CA is (also) a factory, assign the factory name
+    try: 
+        contract_name = mappings["factory_contract_map"][address_lower]
+    except KeyError:
+        pass
+
+    # Specific known contracts: if the CA is a specific known address, assign that name (e.g., delegators, main contract, REP Token)
+    try:
+        contract_name = mappings["map_specific_known_contracts"][address_lower]
+    except KeyError: 
+        pass
+
+    return contract_name
+
+
+
+
+
+
+
+
+
+
+
 
 log_dapp.reset_index(inplace=True, drop=True)
 if "functionName" in log_dapp.columns:
@@ -463,9 +900,12 @@ for col in list_cols:
 log_dapp.info()
 
 
-utils.count_events(log_dapp, "Activity")
+utils.count_events(calls_dapp, "Activity")
 
-len(log_dapp[log_dapp["Activity"]=="create new contract"])
+len(events_dapp[events_dapp["Activity"]=="create new accounting instance"])
+
+
+events_dapp.head(20)
 
 dict_augur_base_log_events = {
     "create market": 2897,
@@ -482,7 +922,7 @@ dict_augur_base_log_events = {
 }
 
 for key,value in dict_augur_base_log_events.items():
-    if value == len(log_dapp[log_dapp["Activity"]==key]):
+    if value == len(events_dapp[events_dapp["Activity"]==key]):
         print(key, "is okay")
     else:
         print(key, "DIFFERENT COUNT")

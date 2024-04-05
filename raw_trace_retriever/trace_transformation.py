@@ -78,8 +78,8 @@ def json_retriever(tx_hash, node_url, max_attempts=15):
 
         attempts += 1
         if attempts == max_attempts:
-            ts = datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')
-            logger.error(f"{ts} Max attempts reached. Invalid tx hash: {tx_hash}.")
+            #ts = datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')
+            logger.error(f"Max attempts reached. Invalid tx hash: {tx_hash}.")
             json_flag = False
 
     return {}, json_flag
@@ -187,9 +187,11 @@ def tx_to_trace(df_txs_lx, node_url):
             if json_flag == False:
                 continue
             # insert order of execution
-            trace_json_lx = insert_tracePos(trace_json_lx, counter=[0])
+            trace_json_lx = insert_tracePos(trace_json_lx, trace_pos_counter=[0])
             # insert position in trace by "depth" of the JSON dictionary (subprocesses) 
-            trace_json_lx = insert_tracePosDepth(trace_json_lx)
+            trace_json_lx = insert_tracePosDepth(trace_json_lx, parent_index="")
+            # insert position in trace by "depth" of the JSON dictionary (subprocesses) 
+            # trace_json_lx = insert_eventPos(trace_json_lx)
             # flatten the JSON data
             df_flat_json = pd.DataFrame.from_dict(flatten(trace_json_lx, {}), orient="index").T
             # flatten nested JSON data
@@ -213,76 +215,106 @@ def tx_to_trace(df_txs_lx, node_url):
     return df_trace_lx
 
 
-def insert_tracePos(trace_json_lx, counter):
+def insert_tracePos(data, trace_pos_counter=[0]):
     """
-    Recursively inserts a counter as a new key-value pair in every dictionary within the given data structure.
-    The counter represents the position of the dictionary within the overall structure, including sub-dictionaries.
+    Recursively inserts a 'tracePos' attribute into dictionaries within a nested structure.
 
     Args:
-        data (dict | list): The data in the form of a dictionary or list containing nested dictionaries.
-        counter (list of int): A list containing a single integer that keeps track of the current position. 
-                               Using a list allows the counter to be mutable and thus updated across recursive calls.
-
-    Returns:
-        dict | list: The modified data with counters inserted.
+        data (dict | list): The nested data structure.
+        trace_pos_counter (list of int): A list with a single element used to keep track
+                                         of the current tracePos value across recursive calls.
+                                         Using a list to allow modifications within function calls.
+    """
     
-    TODO: Position 2 is unfortunately skipped. But the concept still works, the order is established by inserting positions in the trace.
-    """
-    if isinstance(trace_json_lx, dict):
-        # Increment the counter for each new dictionary encountered
-        counter[0] += 1
-        # Insert the counter as a new key-value pair
-        trace_json_lx['tracePos'] = counter[0]
+    if 'result' in data:
+        data['result'] = insert_tracePos(data['result'], trace_pos_counter=[0])
+        return data
+    
+    if isinstance(data, dict):
+        # Increment the tracePos counter for each dictionary processed
+        trace_pos_counter[0] += 1
+        data['tracePos'] = trace_pos_counter[0]
         
-        # Process nested dictionaries or lists
-        for key, value in trace_json_lx.items():
-            if isinstance(value, (dict, list)):
-                insert_tracePos(value, counter)
-    elif isinstance(trace_json_lx, list):
+        # Recursively process nested dictionaries and lists
+        for key in ['calls', 'logs']:
+            if key in data:
+                insert_tracePos(data[key], trace_pos_counter)
+                
+    elif isinstance(data, list):
         # Process each item in the list
-        for item in trace_json_lx:
-            if isinstance(item, str) or isinstance(item, int):
-                    pass
-            if isinstance(item, (dict, list)):
-                insert_tracePos(item, counter)
+        for item in data:
+            # The first item in a "calls" list is not a dict but should have "tracePos"
+            if isinstance(item, dict) or isinstance(item, list):
+                insert_tracePos(item, trace_pos_counter)
+    
+    return data
 
-    return trace_json_lx
 
-def insert_tracePosDepth(data, depth=1, parent_index=''):
+def insert_tracePosDepth(item, parent_index=''):
+    # Define the base case: if item is None, just return
+    if 'result' in item:
+        item['result'] = insert_tracePosDepth(item['result'], parent_index)
+        return item
+    
+    if item is None:
+        return
+    
+    # Initialize a counter for both calls and logs
+    call_counter = 1
+    log_counter = 1
+    
+    # Check if we're at the top-level, which is indicated by an empty parent_index
+    if not parent_index:
+        # At top level, the trace position depth starts with 1
+        item['tracePosDepth'] = '1'
+    else:
+        # Otherwise, use the parent_index directly provided
+        item['tracePosDepth'] = parent_index
+    
+    # Process 'calls', if any, recursively
+    if 'calls' in item:
+        for call in item['calls']:
+            # Construct the new parent_index for the recursive call
+            new_parent_index = f"{item['tracePosDepth']}.{call_counter}"
+            insert_tracePosDepth(call, new_parent_index)
+            call_counter += 1
+    
+    # Process 'logs', if any, after processing all calls to continue the numbering
+    if 'logs' in item:
+        for log in item['logs']:
+            # Logs follow calls, hence the numbering continues from there
+            log_index = f"{item['tracePosDepth']}.{len(item.get('calls', [])) + log_counter}"
+            log['tracePosDepth'] = log_index
+            # This assumes we might want to clear or update topics in some way; keeping as-is for this example
+            log_counter += 1
+
+    return item
+
+
+def insert_eventPos(data):
     """
-    Recursively assigns a 'trace_position_by_depth' value to each dictionary in a nested structure,
-    starting fresh from each dictionary as a new root. The function keeps track of depth and
-    indices at each level without carrying over a parent trace.
+    Recursively inserts an 'eventPos' attribute to each dictionary within a 'logs' list,
+    with an incremental value starting from 1 for each 'logs' list encountered.
 
     Args:
         data (dict | list): The data containing nested dictionaries and/or lists.
-        depth (int): The current depth in the nested structure. Starts at 1.
-        parent_index (str): The index path from the root to the current item's parent.
-
-    Returns:
-        The data with "tracePosDepth' ('trace_position_by_depth') added to each dictionary, indicating its position.
     """
     if isinstance(data, dict):
-        # Construct the current index based on depth and parent_index
-        current_index = f"{parent_index}.{depth}" if parent_index else str(depth)
-        data['tracePosDepth'] = current_index.strip(".")
-
-        # Initialize counter for each level within a dictionary
-        counter = 1
+        # Iterate over each key-value pair in the dictionary
         for key, value in data.items():
-            if isinstance(value, (dict, list)):
-                # Recursively process nested dictionaries/lists with an updated depth
-                insert_tracePosDepth(value, depth=counter, parent_index=current_index)
-                counter += 1
+            if key == 'logs' and isinstance(value, list):
+                # If the current key is 'logs' and its value is a list, insert 'eventPos'
+                for i, item in enumerate(value, start=1):
+                    item['eventPos'] = i
+            else:
+                # Otherwise, recursively process the value
+                insert_eventPos(value)
     elif isinstance(data, list):
-        # Process each item in the list
-        for i, item in enumerate(data, start=1):
-            if isinstance(item, (dict, list)):
-                # Recursively process nested dictionaries/lists with an updated depth
-                insert_tracePosDepth(item, depth=i, parent_index=parent_index)
+        # If the data is a list, recursively process each item in the list
+        for item in data:
+            insert_eventPos(item)
 
     return data
-
 
 # Input: JSON file with nested data containing the calls.
 # Goal: DataFrame with call-type, sender and receiver

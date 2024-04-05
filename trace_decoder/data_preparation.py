@@ -189,6 +189,8 @@ def create_abi_dict(addresses, etherscan_api_key):
                 time.sleep(2)
                 response_json = {"result:"}
         
+        # check if the key "result" is in the JSON response, if not retry, then skip
+        
         # if the address has no verified source code, save the address 
         if response_json["result"] == "Contract source code not verified":
             f += 1
@@ -303,6 +305,9 @@ def decode_events(df_log, dict_abi):
     df_events_raw = df_log[~df_log["address"].isna()]
     df_events_raw.reset_index(drop = True, inplace = True)
 
+    # free up memory
+    del df_log
+    
     unknown_event_count = 0
     
     max_row = len(df_events_raw)
@@ -400,7 +405,10 @@ def decode_events(df_log, dict_abi):
                 logger.info(f"Events decoding: {index} out of {max_row} events decoded.")
             
     logger.info(f"Events decoding: DONE. {unknown_event_count} unknown events occurred. Now building dataframe.")
-
+    
+    # free up memory
+    del df_events_raw
+    
     df_events = pd.DataFrame(accumulated_data)
       
     return df_events, txs_event_not_decoded, unknown_event_addresses
@@ -463,6 +471,9 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
     if zero_value_flag == True:
         mask_callvalue = df_log["callvalue"] == "0x0"
     df_function_raw = df_log[mask & mask_callvalue]
+    
+    # free up memory
+    del df_log 
     # df_function_raw = df_log[mask & (df_log["callvalue"] != "0x0") & (pd.notna(df_log["callvalue"]))]
 
     df_function_raw.reset_index(drop=True, inplace=True)
@@ -604,8 +615,29 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
             
     logger.info(f"Function decoding: DONE. Total function calls {len(df_function_raw)}. Undecoded function calls {unknown_functions_count}. Now building dataframe.")
     
+    # free up memory
+    del df_function_raw
+#    path = os.path.join(dir_path, "resources", 'accumulated_data_calls_zero_value.pkl')
+#    pickle.dump(accumulated_data, open(path, "wb"))
+    
+    # build the dataframe consecutively, the conversion dict->Dataframe may otherwise run out of memory 
+    segment_length = len(accumulated_data) // 5
+    df_function = pd.DataFrame()
+
+    for i in range(5):
+        start_index = i * segment_length
+        end_index = (i + 1) * segment_length if i < 4 else None
+        segment_df = pd.DataFrame(accumulated_data[start_index:end_index])
+        df_function = pd.concat([df_function, segment_df], ignore_index=True)
+
+    del accumulated_data
+
+    # reset index for masking
+    df_function.reset_index(drop=True, inplace=True) 
+    
     # Make the lists a tabular format
-    df_function = pd.DataFrame(accumulated_data)
+    # df_function = pd.DataFrame(accumulated_data)
+
     end = time.time()
     logger.debug(f"Time lapsed for decoding *CALL data {(end-start)}")
     return df_function, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi
