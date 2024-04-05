@@ -234,12 +234,7 @@ def main():
         logger.info(f"THIS WAS LOOP {level-1}")
         
         time.sleep(1)
-    
-    # Convert Gas & GasUsed to integer
-    df_trace_tree['gas'] = df_trace_tree['gas'].apply(lambda x: int(str(x), 16) if str(x) != 'nan' else x)
-    df_trace_tree['gasUsed'] = df_trace_tree['gasUsed'].apply(lambda x: int(str(x), 16) if str(x) != 'nan' else x)
-    
-    logger.info("gas formatiert")
+
     # Save data as CSV and as pickle file
     path = os.path.join(dir_path, "resources", "df_trace_tree_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
     df_trace_tree.to_csv(path)
@@ -427,12 +422,7 @@ def main():
         zero_value_flag = False
         calltype_list = ["CALL"]
         df_functions_dapp, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_functions_dapp, dict_abi, node_url, calltype_list, zero_value_flag, logging_string)
-        
-        # Convert callvalue to integer
-        df_functions_dapp['callvalue'] = df_functions_dapp['callvalue'].apply(lambda x: int(str(x), 16) if str(x) != 'nan' else x)
-        #Takes values in Wei, converts it to Ether, and then assigns the results to a new column named 'callvalue_in_ether'.
-        df_functions_dapp['callvalue_in_ether'] = df_functions_dapp['callvalue'] / 10**18
-        
+
         path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
         df_functions_dapp.to_csv(path)
         path = os.path.join(dir_path, "resources", file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
