@@ -117,7 +117,10 @@ def base_transformation(df_log, contracts_dapp):
         # https://stackoverflow.com/questions/20799593/reading-csv-containing-a-list-in-pandas
         # df_log["topics"] = df_log["topics"].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else np.nan)
         #df_log["topics"] = df_log["topics"].apply(lambda x: x.tolist()[0] if str(x) != "nan" else x)
-    
+
+        #converts callValue, Gas and GasUsed to int
+        df_log = convert_hex_to_int(df_log)
+
     except Exception as e:
         logger.error(f"Error during data transformation: {e}")
         raise
@@ -685,3 +688,14 @@ def process_abi(abi, contract_address_tmp, node_url):
     except Exception as e:
         logger.error(f"Unexpected error processing ABI for {contract_address_tmp}: {e}")
         raise Exception("Unexpected error during ABI processing.")
+
+def convert_hex_to_int(df_log):
+    """
+    Converts hex values in a DataFrame to integers.
+    """
+    print(df_log.columns)
+    df_log['gas'] = df_log['gas'].apply(lambda x: int(str(x), 16) if str(x) != 'nan' else x)
+    df_log['gasUsed'] = df_log['gasUsed'].apply(lambda x: int(str(x), 16) if str(x) != 'nan' else x)
+    df_log['callvalue'] = df_log['callvalue'].apply(lambda x: int(str(x), 16) if str(x) != 'nan' else x)
+    logger.info("Gas formatted to integer.")
+    return df_log
