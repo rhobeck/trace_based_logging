@@ -235,7 +235,6 @@ def main():
         
         time.sleep(1)
 
-    #df_trace_tree = data_preparation.convert_hex_to_int(df_trace_tree)
     # Save data as CSV and as pickle file
     path = os.path.join(dir_path, "resources", "df_trace_tree_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
     df_trace_tree.to_csv(path)

@@ -482,4 +482,10 @@ def test_function():
         json_object = json.load(openfile)
     assert functions_trace_tree.function(json_object)
 ''' 
+def test_gas_decoder():
+    path = os.path.join(dir_path, "tests", "test_resources", "df_trace_tree_0x75228dce4d82566d93068a8d5d49435216551599_5937093_7000011.pkl")
+    df_log = pickle.load(open(path, "rb"))
 
+    #todo write test: Test mit repräsentativen Beispieldaten (z.B. einem Auszug aus dem df_trace_tree) schreiben
+    #decoded_df = data_preparation.convert_hex_to_int(df_log)
+    #assert(decoded_df["gas"][1] == "933379")
