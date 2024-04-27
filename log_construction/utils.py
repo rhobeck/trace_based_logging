@@ -1,5 +1,7 @@
 import pandas as pd
 import json
+from web3 import Web3
+
 
 def low(x):
     return x.lower()
@@ -454,3 +456,71 @@ for act in act_list:
         list_act.append(act)
     print(list_act)
 '''
+
+
+
+def annotate_addresses(addresses, node_url, creations, contracts_dapp, mappings):
+    w3 = Web3(Web3.HTTPProvider(node_url))
+    contract_name_map = label_contracts_by_relative(creations, contracts_dapp, mappings["factory_contract_map"])
+    address_dict = {}
+    for address in addresses:
+             
+        dapp_flag = dapp_check(address, contracts_dapp)
+        
+        address_type = address_type_check(address, w3)
+
+        contract_label = label_contract(address, mappings, contract_name_map)
+            
+        address_dict[address] = {"dapp_flag": dapp_flag, "type": address_type, "contract_label": contract_label}
+
+    return address_dict
+
+
+def address_type_check(address, w3):
+    address_checksum = Web3.toChecksumAddress(address)    
+    byte_res = w3.eth.getCode(address_checksum)
+    
+    if byte_res.hex() == "0x":
+        address_type = "EOA"
+    else:
+        address_type = "CA"
+
+    return address_type
+
+
+def dapp_check(address, contracts_dapp):
+    # Check if contract is part of DApp
+    if address in contracts_dapp:
+        dapp_flag = "dapp"
+    else: 
+        dapp_flag = "non_dapp"
+    return dapp_flag
+
+
+def label_contract(address, mappings, contract_name_map):
+    """
+    Relabel the contracts. Contracts are so far known by their 42-character hex address. 
+    Given their are known CAs and some of them are factories, we attempt to relabel them with readable strings
+    """
+    address_lower = address.lower()
+    contract_name = None
+
+    # Factory child: if the CA is a result of the factory, assign a factory result name
+    try:
+        contract_name = contract_name_map[address_lower]
+    except KeyError:
+        pass
+
+    # Factory: if the CA is (also) a factory, assign the factory name
+    try: 
+        contract_name = mappings["factory_contract_map"][address_lower]
+    except KeyError:
+        pass
+
+    # Specific known contracts: if the CA is a specific known address, assign that name (e.g., delegators, main contract, REP Token)
+    try:
+        contract_name = mappings["map_specific_known_contracts"][address_lower]
+    except KeyError: 
+        pass
+
+    return contract_name

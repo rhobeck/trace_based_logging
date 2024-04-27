@@ -55,39 +55,7 @@ contracts_dapp = pickle.load(open(path, 'rb'))
 # if transaction is reverted, flag
 # not all reverted operations of txs are labeled as such, often only one of them is -> propagate the label "reverted" or "out of gas"
 # collect all reverted operations and the hashes; use the set of hashes to flag reverted operations later
-'''
-path = os.path.join(dir_path, "resources", 'df_events_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-errors_events_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_events_non_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-errors_events_non_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_call_dapp_with_ether_transfer_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-errors_calls_dapp_with_ether_transfer = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_call_with_ether_transfer_non_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-errors_calls_with_ether_transfer_non_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_delegatecall_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-errors_delegatecalls_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_delegatecall_non_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-errors_delegatecalls_non_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_call_with_no_ether_transfer_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-errors_calls_with_no_ether_transfer_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_call_with_no_ether_transfer_non_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-errors_calls_with_no_ether_transfer_non_dapp = pd.read_csv(path, usecols=['error', "hash"])
-path = os.path.join(dir_path, "resources", 'df_creations_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-errors_creations = pd.read_csv(path, usecols=['error', "hash"])
 
-errors = pd.concat(
-    [errors_events_dapp,
-    errors_events_non_dapp,
-    errors_calls_dapp_with_ether_transfer,
-    errors_calls_with_ether_transfer_non_dapp,
-    errors_delegatecalls_dapp,
-    errors_delegatecalls_non_dapp,
-    errors_calls_with_no_ether_transfer_dapp,
-    errors_calls_with_no_ether_transfer_non_dapp,
-    errors_creations 
-    ]
-)
-'''
 path = os.path.join(dir_path, "resources", 'df_trace_tree_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
 errors = pd.read_csv(path, usecols=["error", "hash"])
 
@@ -545,9 +513,12 @@ creations_dapp["dapp"] = True
 
 creations_dapp["Activity"] = "create new contract"
 
+creations_dapp["txHash"] = creations_dapp["hash"]    
+creations_dapp.drop('hash', inplace=True, axis=1)
+
 print(f"Number of CREATEs DAPP: {len(creations_dapp)} -- Now saving ...")
 
-file_name_snipped = "creations_dapp_"
+file_name_snipped = "creations_dapp"
 path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + "_" + str(min_block) + "_" + str(max_block) + ".csv")
 creations_dapp.to_csv(path)
 path = os.path.join(dir_path, "resources", log_folder, file_name_snipped  + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
@@ -564,26 +535,7 @@ creations_non_dapp.loc[creations_non_dapp, "Activity"] = "create new contract"
 
 ######################## CONSOLIDATE ########################
 '''
-path = os.path.join(dir_path, "resources", "events_non_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
-events_non_dapp.to_csv(path)
-path = os.path.join(dir_path, "resources", "events_non_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
-pickle.dump(events_non_dapp, open(path, 'wb'))
-del events_non_dapp
-
-path = os.path.join(dir_path, "resources", "calls_non_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
-calls_non_dapp.to_csv(path)
-path = os.path.join(dir_path, "resources", "calls_non_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
-pickle.dump(calls_non_dapp, open(path, 'wb'))
-del calls_non_dapp
-
-path = os.path.join(dir_path, "resources", "delegatecalls_non_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
-delegatecalls_non_dapp.to_csv(path)
-path = os.path.join(dir_path, "resources", "delegatecalls_non_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
-pickle.dump(delegatecalls_non_dapp, open(path, 'wb'))
-del delegatecalls_non_dapp
-'''
-
-
+# consolidate log data into one dataframe (if possible)
 print("Starting to concatenate.")
 log_dapp = calls_dapp_zero_value.copy()
 del calls_dapp_zero_value
@@ -608,139 +560,9 @@ path = os.path.join(dir_path, "resources", "log_dapp_augur_" + str(min_block) + 
 pickle.dump(log_dapp, open(path, 'wb'))
 del events_dapp
 '''
-path = os.path.join(dir_path, "resources", "calls_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
-calls_dapp.to_csv(path)
-path = os.path.join(dir_path, "resources", "calls_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
-pickle.dump(calls_dapp, open(path, 'wb'))
-del calls_dapp
-
-path = os.path.join(dir_path, "resources", "delegatecalls_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
-delegatecalls_dapp.to_csv(path)
-path = os.path.join(dir_path, "resources", "delegatecalls_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
-pickle.dump(delegatecalls_dapp, open(path, 'wb'))
-del delegatecalls_dapp
-
-path = os.path.join(dir_path, "resources", "creations_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
-creations_dapp.to_csv(path)
-path = os.path.join(dir_path, "resources", "creations_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
-pickle.dump(creations_dapp, open(path, 'wb'))
-del creations_dapp
-
-path = os.path.join(dir_path, "resources", "creations_non_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
-creations_non_dapp.to_csv(path)
-path = os.path.join(dir_path, "resources", "creations_non_dapp_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
-pickle.dump(creations_non_dapp, open(path, 'wb'))
-del creations_non_dapp
-'''
-
-dir_path = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..'))
-
-path = os.path.join(dir_path, 'config.json')
-
-with open(path, 'r') as file:
-    config = json.load(file)
-port = config["port"]
-protocol = config["protocol"]
-host = config["host"]
-node_url = protocol + host + ":" + str(port)
-
-address_dict = {
-    "address": {
-        "dapp": True,
-        "type": "EOA/CA"   
-    }
-}
 
 
-columns_events = ["from", # EOAs, DApp contracts, Non-DApp contracts
- 'to', # EOAs, DApp contracts, Non-DApp contracts
- 'address', # DApp contracts
- '_from', # EOAs, DApp contracts, Non-DApp contracts
- '_to', # EOAs, DApp contracts, Non-DApp contracts
- 'crowdsourcer', # DApp contracts (crowdsourcers)
- 'market', # DApp contracts (markets)
- '_owner', # EOAs, DApp contracts, Non-DApp contracts
- '_address', # DApp contracts
- '_spender', # DApp contracts, Non-DApp contracts
- 'target', # EOAs / users
- 'token', # DApp contracts (Tokens)
- 'feeWindow', # DApp contracts (fee windows)
- 'marketCreator', # EOAs / users
- 'creator', # EOAs / users
- 'shareToken', # DApp contracts (SHARE tokens)
- 'filler', # EOAs / users
- 'sender', # EOAs / users
- 'reporter', # EOAs / users
- 'account', # EOAs / users
- 'disputeCrowdsourcer', # DApp contracts (Dispute crowdsourcers)
- 'contributor', # EOAs / users
- 'contractAuthor', # EOAs as deployer
- 'executor', # EOAs / users
- 'owner', # EOAs and Non-DApp contracts
- 'spender', # DApp contracts (REP tokens, inkl. REP v2)
-]
-
-columns_calls_dapp = [
- 'from', # EOAs, DApp contracts
- 'to', # DApp contracts
- 'address', # DApp contracts
- 'denominationToken', # DApp contracts (Delegator)
- 'designatedReporterAddress', # EOAs / users
- 'sender', # EOAs / users
- 'market', # DApp contracts (markets)
- ]
-
-columns_delegatecalls_dapp = [
- 'from', # DApp contracts
- 'to', # DApp contracts
- 'spender', # DApp contracts, Non-Dapp contracts
- 'denominationToken', # DApp contract (Delegator)
- 'designatedReporterAddress', # EOAs / users
- 'source', # EOAs / users, DApp contracts, Non-DApp contracts 
- 'destination', # EOAs / users, DApp contracts, Non-DApp contracts
- 'owner', # EOAs / users, DApp contracts, Non-DApp contracts
- 'creator', # EOAs / users
- 'feeWindow', # DApp contracts (fee windows)
- 'market', # DApp contracts (markets)
- 'designatedReporter', # EOAs / users
- 'sender', # EOAs / users
- 'reporter', # EOAs / users
- 'target', # DApp contracts (Initial Reporter, Dispute Crowdsourcer)
- 'buyer', # EOAs / users
- 'participant', # EOAs / users, DApp contracts (Disputer)
- 'redeemer', # EOAs / users
- 'newOwner', # EOAs / users
-]
-
-columns_calls_zero_value_dapp = [
- 'from', # EOAs / users, DApp contracts
- 'to', # DApp contracts
- 'controller', # DApp contracts, Non-Dapp contracts
- 'market', # DApp contracts (Markets)
- 'owner', # EOAs / users, DApp contracts
- 'target', # EOAs / users (there are a lot more unique addresses that the expected number of users)
- 'from_function_internal', # EOAs / users, DApp contracts
- 'to_function_internal', # EOAs / users, DApp contracts, Non-DApp contracts
- 'feeWindow', # DApp contracts (Fee Window)
- 'marketCreator', # EOAs / users
- 'designatedReporter', # EOAs / users
- 'creator', # EOAs / users
- 'token', # DApp contract (Delegator)
- 'shareToken', # DApp contracts (Share Token)
- 'filler', # EOAs / users
- 'sender', # EOAs / users
- 'reporter', # EOAs / users
- 'account', # EOAs / users
- 'disputeCrowdsourcer', # DApp contracts (Dispute Crowdsourcer)
- 'shareHolder', # EOAs / users
- 'contributor', # EOAs / users
- 'feeReceiver', # EOAs / users
- 'newOwner', # EOAs / users
- 'spender', # DApp contracts (REP tokens, inkl. REP v2)
-]
-
-
-
+# identify all addresses in the (dapp) log
 def define_addresses(columns, df):
     addresses = list()
     for column in columns:
@@ -749,8 +571,6 @@ def define_addresses(columns, df):
     addresses = {x for x in addresses if pd.notna(x)}
     addresses = {x for x in addresses if x != "nan"}
     return addresses
-
-contracts_dapp
 
 addresses_calls_zero_dapp = define_addresses(columns_calls_zero_value_dapp, calls_dapp_zero_value)
 del calls_dapp_zero_value
@@ -778,135 +598,16 @@ with open(path, "w") as output:
 path = os.path.join(dir_path, "resources", "addresses_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
 pickle.dump(addresses, open(path, 'wb'))
 
-address_dict = annotate_addresses(addresses, node_url)
 
+
+# Create a dictionary with all DApp contracts and their names, dapp_membership, and address type (EOA vs CA)
+address_dict = utils.annotate_addresses(addresses, node_url, creations, contracts_dapp, mappings)
 path = os.path.join(dir_path, "resources", log_folder, "address_dict_" + str(min_block) + "_" + str(max_block) + ".pkl")
 pickle.dump(address_dict, open(path, 'wb'))
 
-def annotate_addresses(addresses, node_url):
-    w3 = Web3(Web3.HTTPProvider(node_url))
-    contract_name_map = utils.label_contracts_by_relative(creations, contracts_dapp, mappings["factory_contract_map"])
-    address_dict = {}
-    for address in addresses:
-             
-        dapp_flag = dapp_check(address, contracts_dapp)
-        
-        address_type = address_type_check(address, w3)
-
-        contract_label = label_contract(address, mappings, contract_name_map)
-            
-        address_dict[address] = {"dapp_flag": dapp_flag, "type": address_type, "contract_label": contract_label}
-
-    return address_dict
 
 
-address_dict = address_dict_2
-
-def address_type_check(address, w3):
-    address_checksum = Web3.toChecksumAddress(address)    
-    byte_res = w3.eth.getCode(address_checksum)
-    
-    if byte_res.hex() == "0x":
-        address_type = "EOA"
-    else:
-        address_type = "CA"
-
-    return address_type
-
-
-def dapp_check(address, contracts_dapp):
-    # Check if contract is part of DApp
-    if address in contracts_dapp:
-        dapp_flag = "dapp"
-    else: 
-        dapp_flag = "non_dapp"
-    return dapp_flag
-
-
-def label_contract(address, mappings, contract_name_map):
-    """
-    Relabel the contracts. Contracts are so far known by their 42-character hex address. 
-    Given their are known CAs and some of them are factories, we attempt to relabel them with readable strings
-    """
-    address_lower = address.lower()
-    contract_name = None
-
-    # Factory child: if the CA is a result of the factory, assign a factory result name
-    try:
-        contract_name = contract_name_map[address_lower]
-    except KeyError:
-        pass
-
-    # Factory: if the CA is (also) a factory, assign the factory name
-    try: 
-        contract_name = mappings["factory_contract_map"][address_lower]
-    except KeyError:
-        pass
-
-    # Specific known contracts: if the CA is a specific known address, assign that name (e.g., delegators, main contract, REP Token)
-    try:
-        contract_name = mappings["map_specific_known_contracts"][address_lower]
-    except KeyError: 
-        pass
-
-    return contract_name
-
-
-
-
-
-
-
-
-
-
-
-
-log_dapp.reset_index(inplace=True, drop=True)
-if "functionName" in log_dapp.columns:
-    print("deleting column 'functionName'")
-    log_dapp.drop(["functionName"], inplace=True, axis=1)
-
-log_dapp["Activity_raw"] = log_dapp["Activity"]
-
-mask_token = ~log_dapp["Activity_token_sensitive"].isnull()
-log_dapp.loc[mask_token, "Activity"] =  log_dapp.loc[mask_token, "Activity_token_sensitive"]
-
-mask_contract = ~log_dapp["Activity_contract_sensitive"].isnull()
-log_dapp.loc[mask_contract, "Activity"] = log_dapp.loc[mask_contract, "Activity_contract_sensitive"]
-
-log_dapp.loc[~mask_contract & ~mask_token, "Activity"] = log_dapp.loc[~mask_contract & ~mask_token, "Activity"]
-
-
-path = os.path.join(dir_path, "resources", "log_augur_" + str(min_block) + "_" + str(max_block) + ".csv")
-log_dapp.to_csv(path)
-path = os.path.join(dir_path, "resources", "log_augur_" + str(min_block) + "_" + str(max_block) + ".pkl")
-pickle.dump(log_dapp, open(path, 'wb'))
-
-
-
-print("ENTRIES")
-print(len(log_dapp))
-list_unique_activities = log_dapp["Activity"].unique()
-print("Number of unique activities: ", len(list_unique_activities))
-for event in list_unique_activities:
-    print(event)
-
-print("ATTRIBUTES")
-list_cols = log_dapp.columns.unique()
-print("Number of unique attributes: ", len(list_cols))
-for col in list_cols:
-    print(col)
-log_dapp.info()
-
-
-utils.count_events(calls_dapp, "Activity")
-
-len(events_dapp[events_dapp["Activity"]=="create new accounting instance"])
-
-
-events_dapp.head(20)
-
+# Sanity check: All events from the ELF log included in extracted log? 
 dict_augur_base_log_events = {
     "create market": 2897,
     "finalize market": 2738, 
@@ -926,110 +627,3 @@ for key,value in dict_augur_base_log_events.items():
         print(key, "is okay")
     else:
         print(key, "DIFFERENT COUNT")
-    
-
-
-'''
-transfer tokens, contract: Root (1) deployment deployment 1
-give approval to transfer tokens, contract: Reputation Token 25478
-transfer tokens, contract: Root (2) deployment deployment 1
-give approval to transfer tokens, contract: Delegator 28556
-mint tokens (2), contract: Reputation Token 56389
-mint tokens, token type: Reputation Token (REP) 56389
-transfer tokens, contract: Reputation Token 433335
-transfer tokens (2), token type: Reputation Token (REP) 433335
-give approval to transfer tokens, contract: Share Token 7807
-mint tokens (2), contract: Delegator 33660
-transfer tokens, contract: Delegator 116994
-burn tokens (2), contract: Delegator 35111
-transfer tokens, contract: Share Token 47877
-mint tokens (2), contract: Share Token 26835
-transfer tokens (2), token type: Shares Token (SHARE) 47877
-mint tokens, token type: Shares Token (SHARE) 26835
-mint tokens (2), contract: Fee Window 1173
-mint tokens, token type: Fee Window Token (PT) 1173
-mint tokens (2), contract: Fee Token 7632
-mint tokens, token type: Fee Token (FEE) 7632
-burn tokens (2), contract: Share Token 10680
-burn tokens, token type: Shares Token (SHARE) 10680
-burn tokens (2), contract: Fee Window 961
-burn tokens, token type: Fee Window Token (PT) 961
-mint tokens (2), contract: Dispute Crowdsourcer 1591
-mint tokens, token type: Dispute Crowdsourcer Token 1591
-burn tokens (2), contract: Fee Token 5402
-burn tokens, token type: Fee Token (FEE) 5402
-burn tokens (2), contract: Dispute Crowdsourcer 1412
-burn tokens, token type: Dispute Crowdsourcer Token 1412
-transfer tokens, contract: Dispute Crowdsourcer 186
-transfer tokens (2), token type: Dispute Crowdsourcer Token 186
-give approval to transfer tokens, contract: Dispute Crowdsourcer 64
-transfer tokens, contract: Fee Window 2
-transfer tokens (2), token type: Fee Window Token (PT) 2
-'''
-
-pd.set_option('display.max_columns', 200)
-mask = events_dapp["Activity"] == "transfer tokens"
-events_dapp[mask]
-
-mask = events_dapp["Activity"] == "transferred tokens"
-events_dapp[mask]
-
-events_dapp["Activity_token_sensitive"].unique()
-
-
-
-
-# Create a dictionary with all DApp contracts and their names
-
-
-def low(x):
-    return x.lower()
-contracts_map, mysterious_contracts = label_contracts_by_relative(creations, contracts_dapp, mappings["factory_contract_map"])
-
-def label_contracts_by_relative(creations, contracts_dapp, factory_contract_map):
-    mysterious_contracts = []
-    mask_dapp_contracts = creations["from"].isin(contracts_dapp)
-    df_create = creations[mask_dapp_contracts]
-    
-    # Create an empty dictionary to store the relationships
-    contract_relationships = {}
-
-    # Iterate through each row in the DataFrame
-    for _, row in df_create.iterrows():
-        creator = row['from']
-        child = row['to']
-
-        # Check if the creator is already a key in the dictionary
-        if creator in contract_relationships:
-            # If yes, append the child to the list of children
-            contract_relationships[creator].append(child)
-        else:
-            # If no, create a new key with the creator and initialize a list with the child
-            contract_relationships[creator] = [child]
-
-    contract_name_map = {}
-    try: 
-        for contract_factory in contract_relationships:
-            if "Factory" in factory_contract_map[low(contract_factory)][-7:]:
-                for contract in contract_relationships[low(contract_factory)]:
-                    contract_name_map[low(contract)] = factory_contract_map[low(contract_factory)][:-8]
-            else:
-                for contract in contract_relationships[low(contract_factory)]:
-                    contract_name_map[low(contract)] = factory_contract_map[low(contract_factory)] + " deployment"
-        #    for contract in contract_relationships[contract_factory]:
-    except:
-        mysterious_contracts.append(contract_factory)
-    return contract_name_map, mysterious_contracts 
-
-mysterious_contracts
-
-contracts_map.update(mappings["factory_contract_map"])
-contracts_map.update(mappings["map_specific_known_contracts"])
-
-set(contracts_map.values())
-
-len(contracts_map)
-
-path = os.path.join(dir_path, "resources", "contracts_map_" + str(min_block) + "_" + str(max_block) + ".pkl")
-pickle.dump(contracts_map, open(path, 'wb'))
-

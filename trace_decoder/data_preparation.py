@@ -208,58 +208,6 @@ def create_abi_dict(addresses, etherscan_api_key):
     
     return(dict_abi, non_verified_addresses, verified_addresses)
 
-# The following is an implementation of the create_abi_dict function with better error handling and an improved retry logic.
-# Tests run just fine, but more challenging tests might be necessary: 
-'''
-def create_abi_dict(addresses):
-    """
-    #Retrieves the ABI for a list of contract addresses from Etherscan and categorizes them into verified and non-verified.
-    """
-    dict_abi = {}
-    non_verified_addresses = set()
-    verified_addresses = set()
-
-    for contract_address_tmp in addresses:
-        attempts = 0
-        response_json = {}
-        while attempts < 3:
-            try:
-                api_key = '9ZRRQ8AC856ZXXJ61MPQ37E1F8PZJGWY33'
-                headers = {'Content-type': 'application/json'}
-                parameters = {
-                    "module": "contract",
-                    "action": "getabi",
-                    "address": contract_address_tmp,
-                    "apikey": api_key
-                }
-                response = requests.get('https://api.etherscan.io/api', params=parameters, headers=headers)
-                response.raise_for_status()  # Raises HTTPError for bad responses
-                
-                response_json = response.json()
-                if response_json.get("result") == "Contract source code not verified":
-                    raise ValueError("Contract source code not verified")
-                
-                abi = json.loads(response_json["result"])
-                verified_addresses.add(contract_address_tmp)
-                dict_abi[contract_address_tmp] = abi
-                break  # Break the loop if successful
-            except requests.exceptions.HTTPError as e:
-                logger.error(f"HTTP error for {contract_address_tmp}: {e}")
-            except ValueError as e:
-                logger.warning(f"{contract_address_tmp}: {e}")
-                non_verified_addresses.add(contract_address_tmp)
-                break  # Exit loop if contract source code is not verified
-            except Exception as e:
-                logger.error(f"Failed to retrieve ABI for {contract_address_tmp}: {e}")
-                attempts += 1
-                time.sleep(2)  # Wait before retrying
-            
-            if attempts == 3:
-                logger.error(f"Maximum attempts reached for {contract_address_tmp}. Moving to the next address.")
-
-    logger.info(f"ABI retrieval complete. Valid ABIs: {len(dict_abi)}, Non-verified contracts: {len(non_verified_addresses)}")
-    return dict_abi, non_verified_addresses, verified_addresses
-''' 
 
 def decode_events(df_log, dict_abi):
     """
@@ -346,9 +294,9 @@ def decode_events(df_log, dict_abi):
             # Existing data in the dataframe df_events_raw (e.g., on the trace) is reused in the new dataframe
             trace_data_values = [
                 row["timeStamp"], row["tracePos"], row["tracePosDepth"],
-                row["hash"], row["blockNumber"]
+                row["hash"], row["blockNumber"], row["transactionIndex"] 
                 ]
-            trace_data_colNames = ["timeStamp", "tracePos", "tracePosDepth", "hash", "blockNumber"]
+            trace_data_colNames = ["timeStamp", "tracePos", "tracePosDepth", "hash", "blockNumber", "transactionIndex"]
 
             # Create a list with the data that was available
             # 1. now decoded name of the event parameter as column name
@@ -566,9 +514,10 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
                                     row["output"], row["callvalue"],
                                     row["calltype"], row["hash"],
                                     row["timeStamp"], row["tracePos"], 
-                                    row["tracePosDepth"], row["blockNumber"]
+                                    row["tracePosDepth"], row["blockNumber"],
+                                    row["transactionIndex"]
                                     ]
-            trace_data_colNames = ["from", "to", "gas", "gasUsed", "output", "callvalue", "calltype", "hash", "timeStamp", "tracePos", "tracePosDepth", "blockNumber"]
+            trace_data_colNames = ["from", "to", "gas", "gasUsed", "output", "callvalue", "calltype", "hash", "timeStamp", "tracePos", "tracePosDepth", "blockNumber", "transactionIndex"]
 
             # Create a list with the data that is available 
             # 1. name of the object as function name

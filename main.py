@@ -1,4 +1,5 @@
 import raw_trace_retriever.get_transactions as get_transactions
+import raw_trace_retriever.get_txIndex as get_txIndex
 import raw_trace_retriever.trace_transformation as trace_transformation
 import raw_trace_retriever.create_relations as create_relations
 import raw_trace_retriever.helpers as helpers
@@ -235,6 +236,14 @@ def main():
         
         time.sleep(1)
 
+    
+    # retrieve transaction index (order of transactions in the trace)
+    # TODO asynchronous requests
+    hash_list = df_trace_tree["hash"].unique()
+    transaction_indexes = get_txIndex.get_txIndex(hash_list, node_url)
+       
+    df_trace_tree["transactionIndex"] = df_trace_tree["hash"].astype(str).map(transaction_indexes).fillna(df_trace_tree["hash"])
+    
     # Save data as CSV and as pickle file
     path = os.path.join(dir_path, "resources", "df_trace_tree_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
     df_trace_tree.to_csv(path)
