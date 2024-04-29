@@ -14,8 +14,6 @@ logger = setup_logging()
 
 MAX_API_RETRIES = 5
 
-import json
-
 # change the default look-up path to the directory above
 dir_path = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..'))
 

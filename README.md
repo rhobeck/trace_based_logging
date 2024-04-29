@@ -20,7 +20,7 @@ There are two noteworthy prerequisites for running the program:
 
 1. Clone the repository:
 ```console
-git clone https://github.com/rhobeck/trace_based_logging
+git clone [this project]
 ```
 
 2. Install the required dependencies:
@@ -37,7 +37,7 @@ Before running the main script, configure the json files in the project folder.
 - `port`: Port to connect to the Ethereum archive node.
 - `protocol`: Protocol to transfer information.
 - `host`: IP address to connect to the Ethereum archive node.
-- `list_contracts_lx`: List of contract addresses that belong to the DApp.
+- `list_contracts`: List of contract addresses that belong to the DApp.
 - `list_predefined_non_dapp_contracts`: List of contract addresses that you do not wish to be included into the list of DApp contracts.
 - `min_block`: Minimum block number for the data query.
 - `max_block`: Maximum block number for the data query.
@@ -64,10 +64,11 @@ To execute the main function of the project, run:
 python main.py
 ```
 
+The resulting files contain tabular transaction trace data. Case specific data transformation helps to create meaningful activity labels and objects. An example implementation for the DApp Augur is provided in [example_transformation_augur.py](log_construction/transformation_augur.py).  
+
 ## Related publications
 
-- Hobeck, R., Weber, I. (2023). *Towards Object-Centric Process Mining for Blockchain Applications*. In: Köpke, J., et al. Business Process Management: Blockchain, Robotic Process Automation and Educators Forum. BPM 2023. Lecture Notes in Business Information Processing, vol 491. Springer, Cham. DOI: [10.1007/978-3-031-43433-4_4](https://doi.org/10.1007/978-3-031-43433-4_4)
-
+Anonymized
 
 ## Remarks
 
