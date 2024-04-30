@@ -562,7 +562,7 @@ del events_dapp
 '''
 
 
-# identify all addresses in the (dapp) log
+# identify addresses in the (dapp) log
 def define_addresses(columns, df):
     addresses = list()
     for column in columns:
@@ -571,6 +571,94 @@ def define_addresses(columns, df):
     addresses = {x for x in addresses if pd.notna(x)}
     addresses = {x for x in addresses if x != "nan"}
     return addresses
+
+
+columns_events = ["from", # EOAs, DApp contracts, Non-DApp contracts
+ 'to', # EOAs, DApp contracts, Non-DApp contracts
+ 'address', # DApp contracts
+ '_from', # EOAs, DApp contracts, Non-DApp contracts
+ '_to', # EOAs, DApp contracts, Non-DApp contracts
+ 'crowdsourcer', # DApp contracts (crowdsourcers)
+ 'market', # DApp contracts (markets)
+ '_owner', # EOAs, DApp contracts, Non-DApp contracts
+ '_address', # DApp contracts
+ '_spender', # DApp contracts, Non-DApp contracts
+ 'target', # EOAs / users
+ 'token', # DApp contracts (Tokens)
+ 'feeWindow', # DApp contracts (fee windows)
+ 'marketCreator', # EOAs / users
+ 'creator', # EOAs / users
+ 'shareToken', # DApp contracts (SHARE tokens)
+ 'filler', # EOAs / users
+ 'sender', # EOAs / users
+ 'reporter', # EOAs / users
+ 'account', # EOAs / users
+ 'disputeCrowdsourcer', # DApp contracts (Dispute crowdsourcers)
+ 'contributor', # EOAs / users
+ 'contractAuthor', # EOAs as deployer
+ 'executor', # EOAs / users
+ 'owner', # EOAs and Non-DApp contracts
+ 'spender', # DApp contracts (REP tokens, inkl. REP v2)
+]
+
+columns_calls_dapp = [
+ 'from', # EOAs, DApp contracts
+ 'to', # DApp contracts
+ 'address', # DApp contracts
+ 'denominationToken', # DApp contracts (Delegator)
+ 'designatedReporterAddress', # EOAs / users
+ 'sender', # EOAs / users
+ 'market', # DApp contracts (markets)
+ ]
+
+columns_delegatecalls_dapp = [
+ 'from', # DApp contracts
+ 'to', # DApp contracts
+ 'spender', # DApp contracts, Non-Dapp contracts
+ 'denominationToken', # DApp contract (Delegator)
+ 'designatedReporterAddress', # EOAs / users
+ 'source', # EOAs / users, DApp contracts, Non-DApp contracts 
+ 'destination', # EOAs / users, DApp contracts, Non-DApp contracts
+ 'owner', # EOAs / users, DApp contracts, Non-DApp contracts
+ 'creator', # EOAs / users
+ 'feeWindow', # DApp contracts (fee windows)
+ 'market', # DApp contracts (markets)
+ 'designatedReporter', # EOAs / users
+ 'sender', # EOAs / users
+ 'reporter', # EOAs / users
+ 'target', # DApp contracts (Initial Reporter, Dispute Crowdsourcer)
+ 'buyer', # EOAs / users
+ 'participant', # EOAs / users, DApp contracts (Disputer)
+ 'redeemer', # EOAs / users
+ 'newOwner', # EOAs / users
+]
+
+columns_calls_zero_value_dapp = [
+ 'from', # EOAs / users, DApp contracts
+ 'to', # DApp contracts
+ 'controller', # DApp contracts, Non-Dapp contracts
+ 'market', # DApp contracts (Markets)
+ 'owner', # EOAs / users, DApp contracts
+ 'target', # EOAs / users (there are a lot more unique addresses that the expected number of users)
+ 'from_function_internal', # EOAs / users, DApp contracts
+ 'to_function_internal', # EOAs / users, DApp contracts, Non-DApp contracts
+ 'feeWindow', # DApp contracts (Fee Window)
+ 'marketCreator', # EOAs / users
+ 'designatedReporter', # EOAs / users
+ 'creator', # EOAs / users
+ 'token', # DApp contract (Delegator)
+ 'shareToken', # DApp contracts (Share Token)
+ 'filler', # EOAs / users
+ 'sender', # EOAs / users
+ 'reporter', # EOAs / users
+ 'account', # EOAs / users
+ 'disputeCrowdsourcer', # DApp contracts (Dispute Crowdsourcer)
+ 'shareHolder', # EOAs / users
+ 'contributor', # EOAs / users
+ 'feeReceiver', # EOAs / users
+ 'newOwner', # EOAs / users
+ 'spender', # DApp contracts (REP tokens, inkl. REP v2)
+]
 
 addresses_calls_zero_dapp = define_addresses(columns_calls_zero_value_dapp, calls_dapp_zero_value)
 del calls_dapp_zero_value
@@ -599,6 +687,16 @@ path = os.path.join(dir_path, "resources", "addresses_" + base_contract + "_" + 
 pickle.dump(addresses, open(path, 'wb'))
 
 
+# get the port to the Etherem node for querying addresses
+dir_path = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..'))
+path = os.path.join(dir_path, 'config.json')
+
+with open(path, 'r') as file:
+    config = json.load(file)
+port = config["port"]
+protocol = config["protocol"]
+host = config["host"]
+node_url = protocol + host + ":" + str(port)
 
 # Create a dictionary with all DApp contracts and their names, dapp_membership, and address type (EOA vs CA)
 address_dict = utils.annotate_addresses(addresses, node_url, creations, contracts_dapp, mappings)
@@ -627,3 +725,158 @@ for key,value in dict_augur_base_log_events.items():
         print(key, "is okay")
     else:
         print(key, "DIFFERENT COUNT")
+        
+
+
+
+
+
+################### Log construction ###################
+
+import pandas as pd
+import pyarrow.parquet as pq
+from pm4py.objects.ocel.obj import OCEL
+
+considered_datasets = ["calls_dapp.parquet", "creations_dapp.parquet", "events_dapp.parquet", "delegatecalls_dapp.parquet", "calls_dapp_zero_value.parquet"]
+
+overall_dataframe = []
+
+for ds in considered_datasets:
+    parquet_file = pq.ParquetFile(ds)
+    column_names = set(parquet_file.schema.names)
+    desired_columns = {"timeStamp", "Activity", "tracePos", "sender", "target", "market", "marketType", "address", "token", "contract_name", "tokenType_name", "orderId", "orderType"}
+
+    dataframe = pd.read_parquet(ds, columns=sorted(list(column_names.intersection(desired_columns))))
+    dataframe.dropna(how='all', axis=1, inplace=True)
+
+    overall_dataframe.append(dataframe)
+
+overall_dataframe = pd.concat(overall_dataframe)
+
+objects = []
+
+eoa = sorted(list(set(overall_dataframe.dropna(subset=["sender"])["sender"].unique()).union(set(overall_dataframe.dropna(subset=["target"])["target"].unique()))))
+eoa = pd.DataFrame({"ocel:oid": eoa})
+eoa["ocel:oid"] = "EOA_" + eoa["ocel:oid"]
+eoa["ocel:type"] = "EOA"
+eoa["category"] = "EOA"
+objects.append(eoa)
+
+tokens = overall_dataframe.dropna(subset=["token"]).groupby("token")["tokenType_name"].first().reset_index()
+tokens.rename(columns={"token": "ocel:oid", "tokenType_name": "category"}, inplace=True)
+tokens["ocel:oid"] = "TOKEN_" + tokens["ocel:oid"]
+tokens["ocel:type"] = "TOKEN"
+tokens["category"] = tokens["category"].astype('string')
+objects.append(tokens)
+
+orders = overall_dataframe.dropna(subset=["orderId"]).groupby("orderId")["orderType"].first().reset_index()
+orders.rename(columns={"orderId": "ocel:oid", "orderType": "category"}, inplace=True)
+orders["ocel:oid"] = "ORDER_" + orders["ocel:oid"]
+orders["ocel:type"] = "ORDER"
+orders["category"] = orders["category"].astype('string')
+objects.append(orders)
+
+contracts = overall_dataframe.dropna(subset=["address"]).groupby("address")["contract_name"].first().reset_index()
+contracts.rename(columns={"address": "ocel:oid", "contract_name": "category"}, inplace=True)
+contracts["ocel:oid"] = "CONTRACT_" + contracts["ocel:oid"]
+contracts["ocel:type"] = "CONTRACT"
+contracts["category"] = contracts["category"].astype('string')
+objects.append(contracts)
+
+markets = overall_dataframe.dropna(subset=["market"]).groupby("market")["marketType"].first().reset_index()
+markets.rename(columns={"market": "ocel:oid", "marketType": "category"}, inplace=True)
+markets["ocel:oid"] = "MARKET_" + markets["ocel:oid"]
+markets["ocel:type"] = "MARKET"
+markets["category"] = markets["category"].astype('string')
+objects.append(markets)
+
+objects = pd.concat(objects)
+del eoa
+del tokens
+del orders
+del contracts
+del markets
+print(objects)
+
+overall_dataframe.sort_values(["timeStamp", "tracePos"], inplace=True)
+overall_dataframe.rename(columns={"Activity": "ocel:activity", "timeStamp": "ocel:timestamp"}, inplace=True)
+overall_dataframe["ocel:eid"] = "EID_" + overall_dataframe.index.astype(str)
+
+e2o = []
+
+eoa_from = overall_dataframe[["tracePos", "ocel:eid", "ocel:activity", "ocel:timestamp", "sender"]].dropna(how='any')
+eoa_from.rename(columns={"sender": "ocel:oid"}, inplace=True)
+eoa_from["ocel:oid"] = "EOA_" + eoa_from["ocel:oid"]
+eoa_from["ocel:type"] = "EOA"
+eoa_from["ocel:qualifier"] = "EOA_FROM"
+e2o.append(eoa_from)
+
+eoa_to = overall_dataframe[["tracePos", "ocel:eid", "ocel:activity", "ocel:timestamp", "target"]].dropna(how='any')
+eoa_to.rename(columns={"target": "ocel:oid"}, inplace=True)
+eoa_to["ocel:oid"] = "EOA_" + eoa_to["ocel:oid"]
+eoa_to["ocel:type"] = "EOA"
+eoa_to["ocel:qualifier"] = "EOA_TO"
+e2o.append(eoa_to)
+
+tokens = overall_dataframe[["tracePos", "ocel:eid", "ocel:activity", "ocel:timestamp", "token"]].dropna(how='any')
+tokens.rename(columns={"token": "ocel:oid"}, inplace=True)
+tokens["ocel:oid"] = "TOKEN_" + tokens["ocel:oid"]
+tokens["ocel:type"] = "TOKEN"
+tokens["ocel:qualifier"] = "TOKEN"
+e2o.append(tokens)
+
+orders = overall_dataframe[["tracePos", "ocel:eid", "ocel:activity", "ocel:timestamp", "orderId"]].dropna(how='any')
+orders.rename(columns={"orderId": "ocel:oid"}, inplace=True)
+orders["ocel:oid"] = "ORDER_" + orders["ocel:oid"]
+orders["ocel:type"] = "ORDER"
+orders["ocel:qualifier"] = "ORDER"
+e2o.append(orders)
+
+contracts = overall_dataframe[["tracePos", "ocel:eid", "ocel:activity", "ocel:timestamp", "address"]].dropna(how='any')
+contracts.rename(columns={"address": "ocel:oid"}, inplace=True)
+contracts["ocel:oid"] = "CONTRACT_" + contracts["ocel:oid"]
+contracts["ocel:type"] = "CONTRACT"
+contracts["ocel:qualifier"] = "CONTRACT"
+e2o.append(contracts)
+
+markets = overall_dataframe[["tracePos", "ocel:eid", "ocel:activity", "ocel:timestamp", "market"]].dropna(how='any')
+markets.rename(columns={"market": "ocel:oid"}, inplace=True)
+markets["ocel:oid"] = "MARKET_" + markets["ocel:oid"]
+markets["ocel:type"] = "MARKET"
+markets["ocel:qualifier"] = "MARKET"
+e2o.append(markets)
+
+e2o = pd.concat(e2o)
+del eoa_from
+del eoa_to
+del tokens
+del orders
+del contracts
+del markets
+e2o.sort_values(["ocel:timestamp", "tracePos", "ocel:oid"], inplace=True)
+del e2o["tracePos"]
+#e2o = e2o.groupby(["ocel:eid", "ocel:oid"]).first().reset_index()
+print(e2o)
+
+events = overall_dataframe[["tracePos", "ocel:eid", "ocel:activity", "ocel:timestamp"]].dropna(how='any')
+events.sort_values(["ocel:timestamp", "tracePos"], inplace=True)
+del events["tracePos"]
+print(events)
+
+objects.to_parquet("ocel_objects.parquet", index=False)
+events.to_parquet("ocel_events.parquet", index=False)
+e2o.to_parquet("ocel_e2o.parquet", index=False)
+
+
+ocel = OCEL(events=pd.read_parquet("ocel_events.parquet"), objects=pd.read_parquet("ocel_objects.parquet"), relations=pd.read_parquet("ocel_e2o.parquet"))
+print(ocel)
+
+
+
+
+
+
+
+
+
+
