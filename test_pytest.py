@@ -483,3 +483,48 @@ def test_function():
     assert functions_trace_tree.function(json_object)
 ''' 
 
+def testconvert_hex_to_int_valid_hexadecimal_values():
+    data = {'gas': ['0x4A817C800', '0x6B49', '0xABC'], 'gasUsed': ['0x5208', '0x6BCD', '0x7F2']}
+    df = pd.DataFrame(data)
+    expected_output = {'gas': [20000000000, 27465, 2748], 'gasUsed': [21000, 27597, 2034]}
+    expected_df = pd.DataFrame(expected_output)
+
+    result_df = data_preparation.convert_hex_to_int(df)
+    pd.testing.assert_frame_equal(result_df, expected_df)
+
+def test_convert_hex_to_int_invalid_hexadecimal_values():
+    data = {'gas': ['0x4A817C800', '0xXYZ', '0x7F2']}
+    df = pd.DataFrame(data)
+    expected_output = {'gas': [20000000000, '0xXYZ', 2034]}
+    expected_df = pd.DataFrame(expected_output)
+
+    result_df = data_preparation.convert_hex_to_int(df)
+    pd.testing.assert_frame_equal(result_df, expected_df)
+
+def test_convert_hex_to_int_missing_values():
+    data = {'gas': ['0x4A817C800', None, '0x7F2']}
+    df = pd.DataFrame(data)
+    expected_output = {'gas': [20000000000, None, 2034]}
+    expected_df = pd.DataFrame(expected_output)
+
+    result_df = data_preparation.convert_hex_to_int(df)
+    pd.testing.assert_frame_equal(result_df, expected_df)
+
+def test_convert_hex_to_int_non_existent_columns():
+    data = {'gas': ['0x4A817C800', '0x6B49', '0xABC']}
+    df = pd.DataFrame(data)
+    expected_data = {'gas': [20000000000, 27465, 2748]}  
+    expected_df = pd.DataFrame(expected_data)
+
+    # Testing a non-existent column should not modify the DataFrame
+    result_df = data_preparation.convert_hex_to_int(df, list_of_cols=['gas', 'not_there'])
+    pd.testing.assert_frame_equal(result_df, expected_df)
+
+def test_convert_hex_to_int_mixed_conditions():
+    data = {'gas': ['0x4A817C800', '0xXYZ', None], 'gasUsed': [None, '0xZZZ', '0x7F2']}
+    df = pd.DataFrame(data)
+    expected_output = {'gas': [20000000000, '0xXYZ', None], 'gasUsed': [None, '0xZZZ', 2034]}
+    expected_df = pd.DataFrame(expected_output)
+
+    result_df = data_preparation.convert_hex_to_int(df)
+    pd.testing.assert_frame_equal(result_df, expected_df)

@@ -115,6 +115,8 @@ def base_transformation(df_log, contracts_dapp):
         # https://stackoverflow.com/questions/20799593/reading-csv-containing-a-list-in-pandas
         # df_log["topics"] = df_log["topics"].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else np.nan)
         #df_log["topics"] = df_log["topics"].apply(lambda x: x.tolist()[0] if str(x) != "nan" else x)
+        
+        df_log = convert_hex_to_int(df_log)
     
     except Exception as e:
         logger.error(f"Error during data transformation: {e}")
@@ -124,6 +126,33 @@ def base_transformation(df_log, contracts_dapp):
     logger.info("Done with basic data transformation.")
     
     return df_log
+
+def convert_hex_to_int(df_log, list_of_cols=["gas", "gasUsed", "callvalue"]):
+    """
+    Converts hex values in a DataFrame to integers.
+    """
+    def safe_hex_to_int(value):
+        # Convert hex values to integers, retaining original value on error."
+        try:
+            return int(value, 16) if pd.notna(value) else value
+        except ValueError:
+            return value
+
+    for col in list_of_cols:
+        if col not in df_log.columns:
+            logger.warning(f"Column '{col}' does not exist in DataFrame. Skipping this column.")
+            continue  
+            
+        try:
+            df_log[col] = df_log[col].apply(safe_hex_to_int)
+        except Exception as e: 
+        # Alternatively a non-specific exception if this does not work
+            logger.error(f"Error processing column {col}: {e}; retained original value")
+
+    logger.info(f"Hex values converted (or retained) for columns {list_of_cols}")
+
+    return df_log
+
 
 def create_abi_dict(addresses, etherscan_api_key):
     """

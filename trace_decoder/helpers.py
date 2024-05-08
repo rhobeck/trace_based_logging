@@ -27,4 +27,3 @@ def count_string_occurrences_in_keys(data, target_string):
             count += count_string_occurrences_in_keys(item, target_string)  # Recursively search in items of the list
 
     return count
-
