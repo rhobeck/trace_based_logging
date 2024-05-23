@@ -10,6 +10,7 @@ import os
 import pickle
 import json
 from logging_config import setup_logging
+import subprocess
 
 
 """
@@ -629,6 +630,26 @@ def main():
     However, the log can be improved by case-specific editing, e.g., defining more meaningful event names, creating objects in the data, etc.
     Since the editing is case specific, the module log_construction is an example for log construction of an Augur log.
     """
+    #################### Save the config in the output folder for documentation purposes ####################
+    try:
+        # Get the latest commit hash
+        commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip().decode('utf-8')
+        
+        # Get the latest commit message
+        commit_message = subprocess.check_output(['git', 'log', '-1', '--pretty=%B']).strip().decode('utf-8')
+        
+    except subprocess.CalledProcessError as e:
+        commit_hash, commit_message = None, None
+    
+    # add the latest commit hash and message to the config
+    config['latest_commit_hash'] = commit_hash
+    config['latest_commit_message'] = commit_message
+
+    # Save config and latest git commit as TXT 
+    path = os.path.join(dir_path, "resources", "used_config_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".txt")
+    with open(path, "w") as output:
+        output.write(str(config))
+
 
     print("DONE")
     
