@@ -479,7 +479,15 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
 
 
     for index, row in df_function_raw.iterrows():
+        
+        
+        # Intermediate logging in 10% steps of the loop range to report on progress
+        if index != 0:
+            state = round(max_row, -1) / index
+            if state in [100/10,100/20,100/30,100/40,100/50,100/60,100/70,100/80,100/90]:
+                logger.info(f"Function decoding: {logging_string} {str(calltype_list)}, {index} out of {max_row} function calls decoded. Decoding failed for {unknown_functions_count}")
 
+        
         # Select the address of the contract the function was called in ("to") and the function input data to decode ("input")
         contract_address_tmp = row["to"]
         contract_address_tmp = contract_address_tmp
@@ -489,7 +497,7 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
         try: 
             contract = contract_objects.get(contract_address_tmp)
         except:
-            logger.debug("Contract not found in ABIs.")
+            logger.debug("Contract not found in ABIs., {index}")
             addresses_not_dapp.add(contract_address_tmp)
             txs_function_not_decoded.append(row["hash"])
             data = list(row)
@@ -497,6 +505,7 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
             row_data = dict(zip(columns, data))
             accumulated_data.append(row_data)
             unknown_functions_count += 1
+            continue
         
         try:
             # The actual decoding happens here.
@@ -504,7 +513,7 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
             func_obj, func_params = contract.decode_function_input(input_data)
         
         except:
-            logger.debug(f"Function parameters could not be decoded for contract {contract_address_tmp} in transaction {row['hash']}")
+            logger.debug(f"Function parameters could not be decoded for contract {contract_address_tmp} in transaction {row['hash']}, {index}")
             addresses_not_dapp.add(contract_address_tmp)
             txs_function_not_decoded.append(row["hash"])
             data = list(row)
@@ -512,6 +521,8 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
             row_data = dict(zip(columns, data))
             accumulated_data.append(row_data)
             unknown_functions_count += 1
+            continue
+            
         
         try:
             # The decoded data will be prepared for a tabular structure. So column names and row entries are needed. 
@@ -573,8 +584,9 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
             # This can later be formatted as a row in the dataframe with all the trace data
             row_data = dict(zip(columns, data))
             accumulated_data.append(row_data)
+            logger.debug(f"SUCCESS {contract_address_tmp} in transaction {row['hash']}, {index}")
         except:
-            logger.debug(f"Data transformation after decoding failed for contract {contract_address_tmp}")
+            logger.debug(f"Data transformation after decoding failed for contract {contract_address_tmp}, {index}")
             addresses_not_dapp.add(contract_address_tmp)
             txs_function_not_decoded.append(row["hash"])
             data = list(row)
@@ -582,13 +594,8 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
             row_data = dict(zip(columns, data))
             accumulated_data.append(row_data)
             unknown_functions_count += 1 
-        
-        # Intermediate logging in 10% steps of the loop range to report on progress
-        if index != 0:
-            state = round(max_row, -1) / index
-            if state in [100/10,100/20,100/30,100/40,100/50,100/60,100/70,100/80,100/90]:
-                logger.info(f"Function decoding: {logging_string} {str(calltype_list)}, {index} out of {max_row} function calls decoded. Decoding failed for {unknown_functions_count}")
-            
+            continue
+                    
     logger.info(f"Function decoding: DONE. Total function calls {len(df_function_raw)}. Undecoded function calls {unknown_functions_count}. Now building dataframe.")
     
     # free up memory
