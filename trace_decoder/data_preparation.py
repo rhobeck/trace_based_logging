@@ -108,9 +108,6 @@ def base_transformation(df_log, contracts_dapp):
         df_log.rename(columns={"type": "calltype"}, inplace=True)
         df_log.rename(columns={"value": "callvalue"}, inplace=True)
         
-        # flag event emitting contracts that belong to the dapp
-        df_log["dapp"] = df_log['address'].isin(contracts_dapp)
-        
         # keep list entries as list entries, not as string
         # https://stackoverflow.com/questions/20799593/reading-csv-containing-a-list-in-pandas
         # df_log["topics"] = df_log["topics"].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else np.nan)
