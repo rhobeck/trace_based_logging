@@ -6,7 +6,16 @@ from web3 import Web3
 def low(x):
     return x.lower()
 
-
+def safe_int_conversion(x):
+    try:
+        x_str = str(x).lower()
+        if x_str == "nan" or x_str == "none":
+            return None
+        # Convert to float first, then to integer
+        return int(float(x_str))
+    except (ValueError, TypeError):
+        return None
+    
 def initial_transformation_events(df, dapp_flag, txs_reverted):
     # documentation written by ChatGPT
     """
@@ -424,7 +433,10 @@ def initial_transformation_calls(df_calls, dapp_flag, txs_reverted):
     # Hex values to int
     val_list = ["gas", "gasUsed", "callvalue"]
     for val in val_list:
-        df_calls.loc[:, val] = df_calls[val].apply(lambda x: int(x, 0) if str(x) != "nan" else None)
+        #df_calls.loc[:, val] = df_calls[val].apply(lambda x: int(str(x), 0) if str(x) != "nan" else None)
+        #handle non-string values:
+        df_calls.loc[:, val] = df_calls[val].apply(safe_int_conversion)
+
         
     # sort out Activity names
     # use only function name from the whole function call string
@@ -463,8 +475,7 @@ def annotate_addresses(addresses, node_url, creations, contracts_dapp, mappings)
     w3 = Web3(Web3.HTTPProvider(node_url))
     contract_name_map = label_contracts_by_relative(creations, contracts_dapp, mappings["factory_contract_map"])
     address_dict = {}
-    for address in addresses:
-             
+    for address in addresses: 
         dapp_flag = dapp_check(address, contracts_dapp)
         
         address_type = address_type_check(address, w3)

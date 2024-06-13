@@ -23,9 +23,9 @@ base_contract = list_contracts_lx[0]
 list_contracts_lx = set(list_contracts_lx)
 # for Augur, important creations occur around block 5926229
 min_block = 5926229
-max_block = 11229577
+max_block = 6050000 # original: 11229577
 
-log_folder = "log_0404"
+log_folder = "log_augur"
 sensitive_events = False
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -327,154 +327,163 @@ print("Number of DELEGATECALLS NON-DAPP: ", len(delegatecalls_non_dapp))
 ######################## ZERO VALUE CALLS DAPP ########################
 
 
-path = os.path.join(dir_path, "resources", 'df_call_with_no_ether_transfer_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
+path = os.path.join(dir_path, "resources", 'df_call_dapp_with_no_ether_transfer_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
 calls_dapp_zero_value = pickle.load(open(path, "rb"))
 
-calls_dapp_zero_value.reset_index(drop=True, inplace=True)
-calls_dapp_zero_value = utils.initial_transformation_calls(calls_dapp_zero_value, True, txs_reverted)
+def zero_value_calls(calls_dapp_zero_value):
+    # Check if the DataFrame is empty
+    if calls_dapp_zero_value.empty:
+        print("Error: df_calls is empty")
+        calls_dapp_zero_value = None  # or handle appropriately
+        return calls_dapp_zero_value
 
-calls_dapp_zero_value = utils.rename_attribute(calls_dapp_zero_value, "Activity", "Activity", mappings["calls_zero_value_map_dapp"])
+    calls_dapp_zero_value.reset_index(drop=True, inplace=True)
+    calls_dapp_zero_value = utils.initial_transformation_calls(calls_dapp_zero_value, True, txs_reverted)
 
-calls_dapp_zero_value = utils.label_contracts(calls_dapp_zero_value, mappings, creations, contracts_dapp)
+    calls_dapp_zero_value = utils.rename_attribute(calls_dapp_zero_value, "Activity", "Activity", mappings["calls_zero_value_map_dapp"])
 
-for hexCol in ["orderId", 'betterOrderId', 'worseOrderId', 'tradeGroupId']:
-    calls_dapp_zero_value[hexCol] = calls_dapp_zero_value[hexCol].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else np.nan)
-    print(calls_dapp_zero_value[hexCol].unique())
+    calls_dapp_zero_value = utils.label_contracts(calls_dapp_zero_value, mappings, creations, contracts_dapp)
 
-if sensitive_events == True:
-    # rename events
-    activity_split_candidates = [
-        "call to set controller",
-        "call to initialize crowdsourcer",
-        "call to check if initialization happened",
-        "call to initialize",
-        "call to create",
-        "call to get dispute round duration in seconds",
-        "call to check if fork happened",
-        "call to get REP token",
-        "call to create REP token",
-        "call to get parent universe",
-        "call to log REP token transferred",
-        "call to log fee window creation",
-        "call to get timestamp",
-        "call to create fee token",
-        "call to create map",
-        "call to create share token",
-        "call to check if known universe",
-        "call to check if container market",
-        "call to create order",
-        "call for trusted transfer",
-        "call to find bounding orders",
-        "call to log order creation",
-        "call to fill order",
-        "call to buy complete sets",
-        "call to log order filling",
-        "call to increment open interest",
-        "call to log share tokens transfer",
-        "call to log share token minted",
-        "call to check if container for share token",
-        "call to check if container for fee window",
-        "call to cancel order",
-        "call to lor order cancellation",
-        "call to fill best order",
-        "call to get or cache designated reporter stake",
-        "call to get or create next fee window",
-        "call to check if container for reporting participant",
-        "call to log fee token minted",
-        "call to check if container for fee token",
-        "call to initiate a trade",
-        "call to sell complete sets",
-        "call to decrement open interest",
-        "call to get or cache reporting fee divisor",
-        "call to get REP price in Atto ETH",
-        "call to log share token burned",
-        "call to buy participation token",
-        "call to trade with limit",
-        "call to fill best order with limit",
-        "call to sell complete sets (public)",
-        "call to log complete sets sold",
-        "call to create dispute crowdsourcer",
-        "call to notify about dispute crowdsourcer creation",
-        "call to log dispute crowdsourcer contribution",
-        "call to get dispute threshold for fork",
-        "call to log dispute crowdsourcer completion",
-        "call to log dispute crowdsourcer tokens minted",
-        "call to get forking market",
-        "call to decrement open interest from market",
-        "call to log market finalization",
-        "call to get or create fee window before",
-        "call to log fee token burning",
-        "call to claim trading proceeds",
-        "call to log trading proceeds claim",
-        "call to log dispute crowdsourcer tokens burned",
-        "call to log dispute crowdsourcer redemption",
-        "call to log complete set purchase",
-        "call to log dispute crowdsourcer tokens transfer",
-        "call to contribute",
-        "call to check if disputed",
-        "call to get REP",
-        "call to dispute",
-        "call to withdraw proceeds",
-        "call to check if finalized",
-        "call to get dispute token address",
-        "call to approve manager to spend dispute tokens",
-        "call to finalize",
-        "call to withdraw fees",
-        "call to get contract fee receiver",
-        "call fee receiver",
-        "call to withdraw contribution",
-        "call to get total contribution",
-        "call to get total fees offered",
-        "call to buy complete sets with cash (public)",
-        "call to buy (public)",
-        "call to transfer ownership",
-        "call to set REP price in Atto ETH",
-        "call to approve"
-    ]
+    for hexCol in ["orderId", 'betterOrderId', 'worseOrderId', 'tradeGroupId']:
+        calls_dapp_zero_value[hexCol] = calls_dapp_zero_value[hexCol].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else np.nan)
+        print(calls_dapp_zero_value[hexCol].unique())
 
-    calls_dapp_zero_value = utils.create_contract_sensitive_events(calls_dapp_zero_value, mappings, creations, contracts_dapp, activity_split_candidates)
+    if sensitive_events == True:
+        # rename events
+        activity_split_candidates = [
+            "call to set controller",
+            "call to initialize crowdsourcer",
+            "call to check if initialization happened",
+            "call to initialize",
+            "call to create",
+            "call to get dispute round duration in seconds",
+            "call to check if fork happened",
+            "call to get REP token",
+            "call to create REP token",
+            "call to get parent universe",
+            "call to log REP token transferred",
+            "call to log fee window creation",
+            "call to get timestamp",
+            "call to create fee token",
+            "call to create map",
+            "call to create share token",
+            "call to check if known universe",
+            "call to check if container market",
+            "call to create order",
+            "call for trusted transfer",
+            "call to find bounding orders",
+            "call to log order creation",
+            "call to fill order",
+            "call to buy complete sets",
+            "call to log order filling",
+            "call to increment open interest",
+            "call to log share tokens transfer",
+            "call to log share token minted",
+            "call to check if container for share token",
+            "call to check if container for fee window",
+            "call to cancel order",
+            "call to lor order cancellation",
+            "call to fill best order",
+            "call to get or cache designated reporter stake",
+            "call to get or create next fee window",
+            "call to check if container for reporting participant",
+            "call to log fee token minted",
+            "call to check if container for fee token",
+            "call to initiate a trade",
+            "call to sell complete sets",
+            "call to decrement open interest",
+            "call to get or cache reporting fee divisor",
+            "call to get REP price in Atto ETH",
+            "call to log share token burned",
+            "call to buy participation token",
+            "call to trade with limit",
+            "call to fill best order with limit",
+            "call to sell complete sets (public)",
+            "call to log complete sets sold",
+            "call to create dispute crowdsourcer",
+            "call to notify about dispute crowdsourcer creation",
+            "call to log dispute crowdsourcer contribution",
+            "call to get dispute threshold for fork",
+            "call to log dispute crowdsourcer completion",
+            "call to log dispute crowdsourcer tokens minted",
+            "call to get forking market",
+            "call to decrement open interest from market",
+            "call to log market finalization",
+            "call to get or create fee window before",
+            "call to log fee token burning",
+            "call to claim trading proceeds",
+            "call to log trading proceeds claim",
+            "call to log dispute crowdsourcer tokens burned",
+            "call to log dispute crowdsourcer redemption",
+            "call to log complete set purchase",
+            "call to log dispute crowdsourcer tokens transfer",
+            "call to contribute",
+            "call to check if disputed",
+            "call to get REP",
+            "call to dispute",
+            "call to withdraw proceeds",
+            "call to check if finalized",
+            "call to get dispute token address",
+            "call to approve manager to spend dispute tokens",
+            "call to finalize",
+            "call to withdraw fees",
+            "call to get contract fee receiver",
+            "call fee receiver",
+            "call to withdraw contribution",
+            "call to get total contribution",
+            "call to get total fees offered",
+            "call to buy complete sets with cash (public)",
+            "call to buy (public)",
+            "call to transfer ownership",
+            "call to set REP price in Atto ETH",
+            "call to approve"
+        ]
 
-    # Propagate the extracted information to all activities with the same 'marketId'
-    calls_dapp_zero_value = pd.merge(calls_dapp_zero_value, market_info, on='market', how='left')
+        calls_dapp_zero_value = utils.create_contract_sensitive_events(calls_dapp_zero_value, mappings, creations, contracts_dapp, activity_split_candidates)
 
-    # Propagate the 'marketType' information to all activities with the same 'marketId'
-    calls_dapp_zero_value = pd.merge(calls_dapp_zero_value, market_type_info, on='market', how='left', suffixes=('', '_propagated'))
+        # Propagate the extracted information to all activities with the same 'marketId'
+        calls_dapp_zero_value = pd.merge(calls_dapp_zero_value, market_info, on='market', how='left')
 
-# utils.count_events(calls_dapp, "Activity_contract_sensitive")
+        # Propagate the 'marketType' information to all activities with the same 'marketId'
+        calls_dapp_zero_value = pd.merge(calls_dapp_zero_value, market_type_info, on='market', how='left', suffixes=('', '_propagated'))
 
-    calls_dapp_zero_value["Activity_raw"] = calls_dapp_zero_value["Activity"]
+    # utils.count_events(calls_dapp, "Activity_contract_sensitive")
 
-    mask_token = ~calls_dapp_zero_value["Activity_token_sensitive"].isnull()
-    calls_dapp_zero_value.loc[mask_token, "Activity"] =  calls_dapp_zero_value.loc[mask_token, "Activity_token_sensitive"]
+        calls_dapp_zero_value["Activity_raw"] = calls_dapp_zero_value["Activity"]
 
-    mask_contract = ~calls_dapp_zero_value["Activity_contract_sensitive"].isnull()
-    calls_dapp_zero_value.loc[mask_contract, "Activity"] = calls_dapp_zero_value.loc[mask_contract, "Activity_contract_sensitive"]
+        mask_token = ~calls_dapp_zero_value["Activity_token_sensitive"].isnull()
+        calls_dapp_zero_value.loc[mask_token, "Activity"] =  calls_dapp_zero_value.loc[mask_token, "Activity_token_sensitive"]
 
-    calls_dapp_zero_value.loc[~mask_contract & ~mask_token, "Activity"] = calls_dapp_zero_value.loc[~mask_contract & ~mask_token, "Activity"]
+        mask_contract = ~calls_dapp_zero_value["Activity_contract_sensitive"].isnull()
+        calls_dapp_zero_value.loc[mask_contract, "Activity"] = calls_dapp_zero_value.loc[mask_contract, "Activity_contract_sensitive"]
 
-else: 
-    print("Sensitive events were not created. Reason: sensitive_events-flag == False")
+        calls_dapp_zero_value.loc[~mask_contract & ~mask_token, "Activity"] = calls_dapp_zero_value.loc[~mask_contract & ~mask_token, "Activity"]
 
-calls_dapp_zero_value["Activity"].unique()
+    else: 
+        print("Sensitive events were not created. Reason: sensitive_events-flag == False")
 
-calls_dapp_zero_value.reset_index(inplace=True, drop=True)
-if "functionName" in calls_dapp_zero_value.columns:
-    print("deleting column 'functionName'")
-    calls_dapp_zero_value.drop(["functionName"], inplace=True, axis=1)
+    calls_dapp_zero_value["Activity"].unique()
+
+    calls_dapp_zero_value.reset_index(inplace=True, drop=True)
+    if "functionName" in calls_dapp_zero_value.columns:
+        print("deleting column 'functionName'")
+        calls_dapp_zero_value.drop(["functionName"], inplace=True, axis=1)
 
 
-print(f"Number of ZERO VALUE CALLS DAPP: {len(calls_dapp_zero_value)} -- Now saving ...")
+    print(f"Number of ZERO VALUE CALLS DAPP: {len(calls_dapp_zero_value)} -- Now saving ...")
 
-file_name_snipped = "calls_dapp_zero_value_"
-path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
-calls_dapp_zero_value.to_csv(path)
-path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-pickle.dump(calls_dapp_zero_value, open(path, 'wb'))
+    file_name_snipped = "calls_dapp_zero_value_"
+    path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".csv")
+    calls_dapp_zero_value.to_csv(path)
+    path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
+    pickle.dump(calls_dapp_zero_value, open(path, 'wb'))
 
-utils.count_events(calls_dapp_zero_value, "Activity")
+    utils.count_events(calls_dapp_zero_value, "Activity")
 
-del calls_dapp_zero_value
-
+    del calls_dapp_zero_value
+    return calls_dapp_zero_value
+    
+calls_dapp_zero_value = zero_value_calls(calls_dapp_zero_value)
 '''
 ######################## ZERO VALUE CALLS NON-DAPP ########################
 
@@ -566,7 +575,11 @@ del events_dapp
 def define_addresses(columns, df):
     addresses = list()
     for column in columns:
-        addresses = addresses + list(df[column].unique())
+        if column in df.columns:
+            addresses = addresses + list(df[column].unique())
+        else:
+            print(f"Column '{column}' is missing from the DataFrame.")
+        
     set(addresses)
     addresses = {x for x in addresses if pd.notna(x)}
     addresses = {x for x in addresses if x != "nan"}
@@ -660,7 +673,10 @@ columns_calls_zero_value_dapp = [
  'spender', # DApp contracts (REP tokens, inkl. REP v2)
 ]
 
-addresses_calls_zero_dapp = define_addresses(columns_calls_zero_value_dapp, calls_dapp_zero_value)
+if calls_dapp_zero_value is not None:
+    addresses_calls_zero_dapp = define_addresses(columns_calls_zero_value_dapp, calls_dapp_zero_value)
+else:
+    addresses_calls_zero_dapp = None
 del calls_dapp_zero_value
 
 path = os.path.join(dir_path, "resources", 'df_events_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
@@ -678,7 +694,10 @@ delegatecalls_dapp = pickle.load(open(path, "rb"))
 addresses_delegatecalls_dapp = define_addresses(columns_delegatecalls_dapp, delegatecalls_dapp)
 del delegatecalls_dapp
 
-addresses = contracts_dapp | addresses_events_dapp | addresses_calls_dapp | addresses_calls_zero_dapp | addresses_delegatecalls_dapp
+#addresses = contracts_dapp | addresses_events_dapp | addresses_calls_dapp | addresses_calls_zero_dapp | addresses_delegatecalls_dapp
+#This way, if any of the variables are None, they will be replaced with an empty set, allowing the union operation to proceed without error.
+addresses = (contracts_dapp or set()) | (addresses_events_dapp or set()) | (addresses_calls_dapp or set()) | (addresses_calls_zero_dapp or set()) | (addresses_delegatecalls_dapp or set())
+
 
 path = os.path.join(dir_path, "resources", "addresses_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".txt")
 with open(path, "w") as output:
@@ -870,13 +889,3 @@ e2o.to_parquet("ocel_e2o.parquet", index=False)
 
 ocel = OCEL(events=pd.read_parquet("ocel_events.parquet"), objects=pd.read_parquet("ocel_objects.parquet"), relations=pd.read_parquet("ocel_e2o.parquet"))
 print(ocel)
-
-
-
-
-
-
-
-
-
-
