@@ -31,14 +31,6 @@ decode_non_dapp (bool):true.
 # Create a logger
 logger = setup_logging()
 
-# Kitties
-#list_contracts_lx = ["0x06012c8cf97bead5deae237070f9587f8e7a266d", "0xb1690c08e213a35ed9bab7b318de14420fb57d8c", "0xc7af99fe5513eb6710e6d5f44f9989da40f27f26"]
-
-#min_block = 11280000
-#max_block = 11300000
-#max_block = 12243999
-#min_block = 4605167
-#max_block = 4617765
 
 class ExtractionState:
     def __init__(self, config):
@@ -325,16 +317,11 @@ def main():
     4. Decodes the data for events, function calls, and delegate calls.
     5. Saves the processed data in various formats (CSV, pickle) for further analysis or processing, e.g., creating meaningful event logs.
 
-    The function utilizes several modules to accomplish these tasks, including:
+    The function utilizes modules to accomplish these tasks:
     - `get_transactions` for fetching transaction data.
     - `trace_transformation` for transforming transaction traces.
     - `create_relations` for identifying CREATE-relationships beween smart contracts within the data.
     - `data_preparation` for preprocessing and decoding transaction data.
-
-    The process is logged using the configured logger, with errors and information at code execution.
-
-    Raises:
-        ValueError: If no transaction data is fetched, indicating a potential issue in data extraction or empty dataset.
 
     Note:
         Before executing, ensure the 'config.json' file in the script's directory is properly configured with 
@@ -360,7 +347,7 @@ def main():
     """
     At this point a transaction traces were extracted. 
     However, the data in the traces is encoded. 
-    Hence, the following script heplps to decode the data.
+    Hence, the following script helps to decode the data.
     
     The decoding can be done for different types in the data.
     There is a general distinction between: 
@@ -430,7 +417,7 @@ def main():
     except Exception as e:
         logger.error(f"Error in the decoding process: {e}")
     """
-    For handling log construction, there is a module implemented individually and currently stand-alone.
+    For handling log construction, there is a module implemented individually and currently stand-alone (log_construction).
     Please note that the decoded trace can be used as an event log per se.
     However, the log can be improved by case-specific editing, e.g., defining more meaningful event names, creating objects in the data, etc.
     Since the editing is case specific, the module log_construction is an example for log construction of an Augur log.

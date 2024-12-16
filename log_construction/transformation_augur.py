@@ -7,18 +7,30 @@ import address_classification
 import json
 from web3 import Web3
 
+dir_path = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..'))
 
-# from logging_config import setup_logging
 
-# logger = setup_logging()
+def load_config(config_path):
+    with open(config_path, 'r') as file:
+        config = json.load(file)
+    return config
 
-list_contracts_lx = ["0x75228dce4d82566d93068a8d5d49435216551599", "0x57f1c2953630056aaadb9bfbda05369e6af7872b"]
-list_contracts_lx = list(map(utils.low, list_contracts_lx))
-base_contract = list_contracts_lx[0]
-list_contracts_lx = set(list_contracts_lx)
+def build_node_url(config):
+    """Construct the Ethereum node URL from the config."""
+    return f"{config['protocol']}{config['host']}:{config['port']}"
+
+
+config = load_config(os.path.join(dir_path, 'config.json'))
+
+list_contracts = config["list_contracts"]
+base_contract = list_contracts[0]
+list_contracts = set(list_contracts)
 # for Augur, important creations occur around block 5926229
-min_block = 5926229
-max_block = 11229577
+min_block = config["min_block"]
+max_block = config["max_block"]
+# min_block = 5926229
+# max_block = 11229577
+
 
 log_folder = "log_1029"
 sensitive_events = False
