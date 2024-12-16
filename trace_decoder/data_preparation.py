@@ -436,6 +436,9 @@ def decode_events(df_log, dict_abi):
     del df_events_raw
     
     df_events = pd.DataFrame(accumulated_data)
+    if "address" in df_events.columns:
+        df_events["address"] = df_events["address"].str.lower()
+
       
     return df_events#, txs_event_not_decoded, unknown_event_addresses
 
