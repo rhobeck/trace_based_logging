@@ -1,14 +1,9 @@
-import pm4py
 import pandas as pd
-import math
-import datetime
-from matplotlib import pyplot as plt
 import numpy as np
-import ast
 import os
 import pickle
-import time
 import utils
+import address_classification
 import json
 from web3 import Web3
 
@@ -25,7 +20,7 @@ list_contracts_lx = set(list_contracts_lx)
 min_block = 5926229
 max_block = 11229577
 
-log_folder = "log_0404"
+log_folder = "log_1029"
 sensitive_events = False
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -49,6 +44,8 @@ creations = pickle.load(open(path, "rb"))
 # Ingest dapp contracts
 path = os.path.join(dir_path, "resources", "contracts_dapp_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
 contracts_dapp = pickle.load(open(path, 'rb'))
+
+len(contracts_dapp)
 
 ######################## REVERTED TRANSACTIONS ########################
 
@@ -327,7 +324,7 @@ print("Number of DELEGATECALLS NON-DAPP: ", len(delegatecalls_non_dapp))
 ######################## ZERO VALUE CALLS DAPP ########################
 
 
-path = os.path.join(dir_path, "resources", 'df_call_with_no_ether_transfer_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
+path = os.path.join(dir_path, "resources", 'df_call_dapp_with_no_ether_transfer_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
 calls_dapp_zero_value = pickle.load(open(path, "rb"))
 
 calls_dapp_zero_value.reset_index(drop=True, inplace=True)
@@ -561,132 +558,7 @@ pickle.dump(log_dapp, open(path, 'wb'))
 del events_dapp
 '''
 
-
-# identify addresses in the (dapp) log
-def define_addresses(columns, df):
-    addresses = list()
-    for column in columns:
-        addresses = addresses + list(df[column].unique())
-    set(addresses)
-    addresses = {x for x in addresses if pd.notna(x)}
-    addresses = {x for x in addresses if x != "nan"}
-    return addresses
-
-
-columns_events = ["from", # EOAs, DApp contracts, Non-DApp contracts
- 'to', # EOAs, DApp contracts, Non-DApp contracts
- 'address', # DApp contracts
- '_from', # EOAs, DApp contracts, Non-DApp contracts
- '_to', # EOAs, DApp contracts, Non-DApp contracts
- 'crowdsourcer', # DApp contracts (crowdsourcers)
- 'market', # DApp contracts (markets)
- '_owner', # EOAs, DApp contracts, Non-DApp contracts
- '_address', # DApp contracts
- '_spender', # DApp contracts, Non-DApp contracts
- 'target', # EOAs / users
- 'token', # DApp contracts (Tokens)
- 'feeWindow', # DApp contracts (fee windows)
- 'marketCreator', # EOAs / users
- 'creator', # EOAs / users
- 'shareToken', # DApp contracts (SHARE tokens)
- 'filler', # EOAs / users
- 'sender', # EOAs / users
- 'reporter', # EOAs / users
- 'account', # EOAs / users
- 'disputeCrowdsourcer', # DApp contracts (Dispute crowdsourcers)
- 'contributor', # EOAs / users
- 'contractAuthor', # EOAs as deployer
- 'executor', # EOAs / users
- 'owner', # EOAs and Non-DApp contracts
- 'spender', # DApp contracts (REP tokens, inkl. REP v2)
-]
-
-columns_calls_dapp = [
- 'from', # EOAs, DApp contracts
- 'to', # DApp contracts
- 'address', # DApp contracts
- 'denominationToken', # DApp contracts (Delegator)
- 'designatedReporterAddress', # EOAs / users
- 'sender', # EOAs / users
- 'market', # DApp contracts (markets)
- ]
-
-columns_delegatecalls_dapp = [
- 'from', # DApp contracts
- 'to', # DApp contracts
- 'spender', # DApp contracts, Non-Dapp contracts
- 'denominationToken', # DApp contract (Delegator)
- 'designatedReporterAddress', # EOAs / users
- 'source', # EOAs / users, DApp contracts, Non-DApp contracts 
- 'destination', # EOAs / users, DApp contracts, Non-DApp contracts
- 'owner', # EOAs / users, DApp contracts, Non-DApp contracts
- 'creator', # EOAs / users
- 'feeWindow', # DApp contracts (fee windows)
- 'market', # DApp contracts (markets)
- 'designatedReporter', # EOAs / users
- 'sender', # EOAs / users
- 'reporter', # EOAs / users
- 'target', # DApp contracts (Initial Reporter, Dispute Crowdsourcer)
- 'buyer', # EOAs / users
- 'participant', # EOAs / users, DApp contracts (Disputer)
- 'redeemer', # EOAs / users
- 'newOwner', # EOAs / users
-]
-
-columns_calls_zero_value_dapp = [
- 'from', # EOAs / users, DApp contracts
- 'to', # DApp contracts
- 'controller', # DApp contracts, Non-Dapp contracts
- 'market', # DApp contracts (Markets)
- 'owner', # EOAs / users, DApp contracts
- 'target', # EOAs / users (there are a lot more unique addresses that the expected number of users)
- 'from_function_internal', # EOAs / users, DApp contracts
- 'to_function_internal', # EOAs / users, DApp contracts, Non-DApp contracts
- 'feeWindow', # DApp contracts (Fee Window)
- 'marketCreator', # EOAs / users
- 'designatedReporter', # EOAs / users
- 'creator', # EOAs / users
- 'token', # DApp contract (Delegator)
- 'shareToken', # DApp contracts (Share Token)
- 'filler', # EOAs / users
- 'sender', # EOAs / users
- 'reporter', # EOAs / users
- 'account', # EOAs / users
- 'disputeCrowdsourcer', # DApp contracts (Dispute Crowdsourcer)
- 'shareHolder', # EOAs / users
- 'contributor', # EOAs / users
- 'feeReceiver', # EOAs / users
- 'newOwner', # EOAs / users
- 'spender', # DApp contracts (REP tokens, inkl. REP v2)
-]
-
-addresses_calls_zero_dapp = define_addresses(columns_calls_zero_value_dapp, calls_dapp_zero_value)
-del calls_dapp_zero_value
-
-path = os.path.join(dir_path, "resources", 'df_events_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
-events_dapp = pickle.load(open(path, "rb"))
-addresses_events_dapp = define_addresses(columns_events, events_dapp)
-del events_dapp
-
-path = os.path.join(dir_path, "resources", 'df_call_dapp_with_ether_transfer_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
-calls_dapp = pickle.load(open(path, "rb"))
-addresses_calls_dapp = define_addresses(columns_calls_dapp, calls_dapp)
-del calls_dapp
-
-path = os.path.join(dir_path, "resources", 'df_delegatecall_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
-delegatecalls_dapp = pickle.load(open(path, "rb"))
-addresses_delegatecalls_dapp = define_addresses(columns_delegatecalls_dapp, delegatecalls_dapp)
-del delegatecalls_dapp
-
-addresses = contracts_dapp | addresses_events_dapp | addresses_calls_dapp | addresses_calls_zero_dapp | addresses_delegatecalls_dapp
-
-path = os.path.join(dir_path, "resources", "addresses_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".txt")
-with open(path, "w") as output:
-    output.write(str(addresses))
-path = os.path.join(dir_path, "resources", "addresses_" + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
-pickle.dump(addresses, open(path, 'wb'))
-
-
+#################### ACCOUNT DICTIONARY ####################  
 # get the port to the Etherem node for querying addresses
 dir_path = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..'))
 path = os.path.join(dir_path, 'config.json')
@@ -698,11 +570,10 @@ protocol = config["protocol"]
 host = config["host"]
 node_url = protocol + host + ":" + str(port)
 
-# Create a dictionary with all DApp contracts and their names, dapp_membership, and address type (EOA vs CA)
-address_dict = utils.annotate_addresses(addresses, node_url, creations, contracts_dapp, mappings)
+address_dict = address_classification.create_address_dict(base_contract, log_folder, dir_path, min_block, max_block, contracts_dapp, node_url, creations, mappings)
+
 path = os.path.join(dir_path, "resources", log_folder, "address_dict_" + str(min_block) + "_" + str(max_block) + ".pkl")
 pickle.dump(address_dict, open(path, 'wb'))
-
 
 
 # Sanity check: All events from the ELF log included in extracted log? 

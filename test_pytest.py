@@ -254,9 +254,9 @@ def test_remove_predefined_contracts():
 def test_abi_retrieval():
     path = os.path.join(dir_path, 'tests', 'test_resources', 'addresses_6.pkl')
     addresses = pickle.load(open(path, 'rb'))
-    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict(addresses, etherscan_api_key)
-    assert(len(non_verified_addresses)==1)
-    assert(len(verified_addresses) == 5)
+    dict_abi = data_preparation.create_abi_dict(addresses, etherscan_api_key)
+    #assert(len(non_verified_addresses)==1)
+    #assert(len(verified_addresses) == 5)
     assert(len(dict_abi) == 5)
 
 
@@ -270,15 +270,16 @@ def test_decode_events():
     df_log["tracePos"] = df_log["order"]
     df_log["tracePosDepth"] = df_log["order"]
     df_log["address"] = df_log["address"].apply(lambda x: str(x).lower() if str(x) != "nan" else x)
-    df_events, txs_event_not_decoded, unknown_event_addresses = data_preparation.decode_events(df_log, dict_abi)
+    df_log["transactionIndex"] = None
+    df_events = data_preparation.decode_events(df_log, dict_abi)
     df_events.reset_index(drop=True, inplace=True)
     # Test for a fallback event / standard event
     assert(df_events["name"][1] == "Approval")
-    # Test of an event in the contract stecific API
+    # Test of an event in the contract specific API
     assert(df_events["name"][33] == "Deposited")
     assert(len(df_events == 40))
-    assert(txs_event_not_decoded == ['0x805b27c880eb35907a2a356dbceb318eec6b596670fd2b5488adca1a9bd7d084'])
-    assert(unknown_event_addresses == {'0x1dd864ed6f291b31c86aaf228db387cd60a20e18'})
+    #assert(txs_event_not_decoded == ['0x805b27c880eb35907a2a356dbceb318eec6b596670fd2b5488adca1a9bd7d084'])
+    #assert(unknown_event_addresses == {'0x1dd864ed6f291b31c86aaf228db387cd60a20e18'})
     
     
 def test_event_decoder():
@@ -294,7 +295,7 @@ def test_event_decoder():
     
     i = 0
     address = df_log["address"].iloc[i]
-    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict([address], etherscan_api_key)
+    dict_abi = data_preparation.create_abi_dict([address], etherscan_api_key)
     address = df_log["address"].iloc[i]
     topics = df_log["topics"].iloc[i]
     data = df_log["data"].iloc[i]
@@ -303,7 +304,7 @@ def test_event_decoder():
     
     i = 1
     address = df_log["address"].iloc[i]
-    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict([address], etherscan_api_key)
+    dict_abi = data_preparation.create_abi_dict([address], etherscan_api_key)
     address = df_log["address"].iloc[i]
     topics = df_log["topics"].iloc[i]
     data = df_log["data"].iloc[i]
@@ -312,7 +313,7 @@ def test_event_decoder():
     
     i = 2
     address = df_log["address"].iloc[i]
-    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict([address], etherscan_api_key)
+    dict_abi = data_preparation.create_abi_dict([address], etherscan_api_key)
     address = df_log["address"].iloc[i]
     topics = df_log["topics"].iloc[i]
     data = df_log["data"].iloc[i]
@@ -321,7 +322,7 @@ def test_event_decoder():
 
     i = 3
     address = df_log["address"].iloc[i]
-    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict([address], etherscan_api_key)
+    dict_abi = data_preparation.create_abi_dict([address], etherscan_api_key)
     address = df_log["address"].iloc[i]
     topics = df_log["topics"].iloc[i]
     data = df_log["data"].iloc[i]
@@ -330,7 +331,7 @@ def test_event_decoder():
 
     i = 4
     address = df_log["address"].iloc[i]
-    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict([address], etherscan_api_key)
+    dict_abi = data_preparation.create_abi_dict([address], etherscan_api_key)
     address = df_log["address"].iloc[i]
     topics = df_log["topics"].iloc[i]
     data = df_log["data"].iloc[i]
@@ -346,7 +347,7 @@ def test_event_decoder():
     
     i = 0
     address = df_log["address"].iloc[i]
-    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict([address], etherscan_api_key)
+    dict_abi = data_preparation.create_abi_dict([address], etherscan_api_key)
     address = df_log["address"].iloc[i]
     topics = df_log["topics"].iloc[i]
     data = df_log["data"].iloc[i]
@@ -361,7 +362,7 @@ def test_event_decoder():
 
     i = 1
     address = df_log["address"].iloc[i]
-    dict_abi, non_verified_addresses, verified_addresses = data_preparation.create_abi_dict([address], etherscan_api_key)
+    dict_abi = data_preparation.create_abi_dict([address], etherscan_api_key)
     address = df_log["address"].iloc[i]
     topics = df_log["topics"].iloc[i]
     data = df_log["data"].iloc[i]
@@ -412,6 +413,7 @@ def test_function_decoder():
     df_log["order_events"] = df_log["address"].apply(lambda x: int(x[43:]) if isinstance(x, str) else 0)
     df_log["tracePos"] = df_log["order_calls"] + df_log["order_events"]
     df_log["tracePosDepth"] = df_log["tracePos"]
+    df_log["transactionIndex"] = None
     df_log.drop(["order_calls", "order_events"], axis=1, inplace=True)
 
     # delete the ordering attachement from "from" and "address"
@@ -424,12 +426,13 @@ def test_function_decoder():
     dict_abi = pickle.load(open(path, 'rb'))
 
     logging_string = "DAPP WITH ETHER TRANSFER"
-    df_functions, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi = data_preparation.decode_functions(df_log, dict_abi, node_url, ["CALL"], False, logging_string)
+    df_functions = data_preparation.decode_functions(df_log, dict_abi, node_url, ["CALL"], False, logging_string)
 
-    item = df_functions["name"].unique()[1]
-    
-    assert(item == "<Function publicTradeWithLimit(uint8,address,uint256,uint256,uint256,bytes32,bytes32,bytes32,uint256)>")
+    item = df_functions["name"].unique()[2]
+    assert(item == "<Function createUniverse(address,address,bytes32)>")
 
+    assert(len(df_functions) == 9395)
+    # if len(df_functions) != 9395 then probably faulty error handling
 
 '''
 def test_propagate_extraInfo():

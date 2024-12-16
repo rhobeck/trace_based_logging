@@ -459,7 +459,7 @@ for act in act_list:
 
 
 
-def annotate_addresses(addresses, node_url, creations, contracts_dapp, mappings):
+def annotate_addresses(addresses, addresses_w_min_block_numbers, node_url, creations, contracts_dapp, mappings):
     w3 = Web3(Web3.HTTPProvider(node_url))
     contract_name_map = label_contracts_by_relative(creations, contracts_dapp, mappings["factory_contract_map"])
     address_dict = {}
@@ -467,7 +467,7 @@ def annotate_addresses(addresses, node_url, creations, contracts_dapp, mappings)
              
         dapp_flag = dapp_check(address, contracts_dapp)
         
-        address_type = address_type_check(address, w3)
+        address_type = address_type_check(address, addresses_w_min_block_numbers, w3)
 
         contract_label = label_contract(address, mappings, contract_name_map)
             
@@ -476,9 +476,11 @@ def annotate_addresses(addresses, node_url, creations, contracts_dapp, mappings)
     return address_dict
 
 
-def address_type_check(address, w3):
-    address_checksum = Web3.toChecksumAddress(address)    
-    byte_res = w3.eth.getCode(address_checksum)
+def address_type_check(address, addresses_w_min_block_numbers, w3):
+    # TODO: Caveat: self-destructed contracts also have "0x" as code, see: 0xE9F42B1013F90Bb16eaB5382936cC7F9804dcFc5
+    address_checksum = Web3.toChecksumAddress(address)
+    block_number = addresses_w_min_block_numbers[address]
+    byte_res = w3.eth.getCode(address_checksum, block_identifier=block_number)
     
     if byte_res.hex() == "0x":
         address_type = "EOA"

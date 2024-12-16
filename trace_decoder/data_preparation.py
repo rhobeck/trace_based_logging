@@ -10,6 +10,7 @@ import os
 from logging_config import setup_logging
 
 
+
 logger = setup_logging()
 
 MAX_API_RETRIES = 5
@@ -22,8 +23,8 @@ def load_event_definitions(config_file):
         event_definitions = json.load(file)
     return event_definitions
 
-path = os.path.join(dir_path, 'config_custom_events.json')
-fallback_abis = load_event_definitions(path)
+def low(x):
+    return x.lower()
 
 def base_transformation(df_log, contracts_dapp):
     """
@@ -123,6 +124,56 @@ def base_transformation(df_log, contracts_dapp):
     logger.info("Done with basic data transformation.")
     
     return df_log
+
+
+def address_selection(df_log):
+    # only events in the traces have the attribute "address", so selecting contract addresses in which events occurred == selecting entries of the attribute "address"
+    try: 
+        addresses_events = df_log["address"].unique()
+        addresses_events = list(addresses_events)
+    except: 
+        logger.debug("Selecting contracts with events failed. No contracts with events?")
+        addresses_events = list()
+    # only CALLs have the characteristic "CALL" in the attribute "calltype"
+    # The call came from outside the contract INTO the contract, so the contract address is in the attribute "to"
+    try:  
+        addresses_calls = df_log[df_log["calltype"] == "CALL"]["to"].unique()
+        addresses_calls = list(addresses_calls)
+    except: 
+        logger.debug("Selecting contracts with CALLs failed. No contracts with CALLs?")
+        addresses_calls = list()
+    # Only DELEGATECALLs have the characteristic "DELEGATECALL" in the attribute "calltype"
+    # The call came from outside the contract INTO the contract, so the contract address is in the attribute "to" 
+    try: 
+        addresses_delegatecall = df_log[df_log["calltype"] == "DELEGATECALL"]["to"].unique()
+        addresses_delegatecall = list(addresses_delegatecall)
+    except:
+        logger.debug("Selecting contracts with events failed. No contracts with DELEGATECALLs?")
+        addresses_delegatecall = list()
+
+    # Make one list of all addresses with relevant entries
+    try:
+        addresses = addresses_events + addresses_calls + addresses_delegatecall
+    except:
+        logger.debug("Creating a full list of contracts failed.")
+
+    # Keep unique values
+    addresses = set(addresses)
+    # Remove NaNs from the list of addresses
+    # https://stackoverflow.com/questions/21011777/how-can-i-remove-nan-from-list-python-numpy
+    try:
+        addresses = [x for x in addresses if str(x) != 'nan']
+    except: 
+        logger.debug("Removing NaN values from the list of addresses failed.")
+    
+    # Remove capitalized letters. If everything is always lower-case, it's easier to ensure that string comparisons work (because 'a'!='A')
+    logger.debug("Removing capital letters.")
+    addresses = list(map(low, addresses))
+
+    logger.info(f"{len(addresses_events)} contracts with events, {len(addresses_calls)} contracts with CALLs, {len(addresses_delegatecall)} contracts with DELEGATECALLs, {len(addresses)} unique contracts to look up ABIs for.")
+
+    return addresses#, addresses_events, addresses_calls, addresses_delegatecall
+
 
 def convert_hex_to_int(df_log, list_of_cols=["gas", "gasUsed", "callvalue"]):
     """
@@ -230,8 +281,7 @@ def create_abi_dict(addresses, etherscan_api_key):
     
     logger.info(f"{len(dict_abi)} contract ABI(s) retrieved {f} contract(s) without verified ABI(s)")
     
-    return(dict_abi, non_verified_addresses, verified_addresses)
-
+    return dict_abi#, non_verified_addresses, verified_addresses
 
 def decode_events(df_log, dict_abi):
     """
@@ -286,6 +336,10 @@ def decode_events(df_log, dict_abi):
 
     unknown_event_addresses = set()
     txs_event_not_decoded = list()
+
+    # load fallback_abis
+    path = os.path.join(dir_path, 'config_custom_events.json')
+    fallback_abis = load_event_definitions(path)
 
     logger.info("Starting to decode events.")
 
@@ -383,12 +437,12 @@ def decode_events(df_log, dict_abi):
     
     df_events = pd.DataFrame(accumulated_data)
       
-    return df_events, txs_event_not_decoded, unknown_event_addresses
+    return df_events#, txs_event_not_decoded, unknown_event_addresses
 
 
 # decoding ABIs could be decoded once in one go 
 
-def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag, logging_string):
+def decode_functions(df_log, dict_abi, node_url, calltype_list, include_zero_value_transactions, logging_string):
     """
     Decodes function call data from Ethereum transaction logs using the contract ABIs. It filters transactions based
     on specified call types and non-zero Ether transfer values, then attempts to decode each transaction's input data.
@@ -438,9 +492,9 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
     # Note that there is a lot if callvalue == 0 calls. They can also be decoded but for use cases chosen so far its just too much for an off-the shelf laptop to handle (in the current implementation)
     # The selected data will be decoded. 
     mask = df_log["calltype"].isin(calltype_list)
-    if zero_value_flag == False:
+    if include_zero_value_transactions == False:
         mask_callvalue = df_log["callvalue"] != "0x0"
-    if zero_value_flag == True:
+    if include_zero_value_transactions == True:
         mask_callvalue = df_log["callvalue"] == "0x0"
     df_function_raw = df_log[mask & mask_callvalue]
     
@@ -600,17 +654,31 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
 #    path = os.path.join(dir_path, "resources", 'accumulated_data_calls_zero_value.pkl')
 #    pickle.dump(accumulated_data, open(path, "wb"))
     
-    # build the dataframe consecutively, the conversion dict->Dataframe may otherwise run out of memory 
-    segment_length = len(accumulated_data) // 5
-    df_function = pd.DataFrame()
+
+    
+    
+    # Build the dataframe in 5 segments
+    total_length = len(accumulated_data)
+
+    # Calculate split indices to divide data into 5 equal parts
+    split_indices = [int(total_length * i / 5) for i in range(6)]  # Generates indices from 0 to total_length
+
+    df_segments = []  # List to store DataFrame segments
 
     for i in range(5):
-        start_index = i * segment_length
-        end_index = (i + 1) * segment_length if i < 4 else None
-        segment_df = pd.DataFrame(accumulated_data[start_index:end_index])
-        df_function = pd.concat([df_function, segment_df], ignore_index=True)
+        start_index = split_indices[i]
+        end_index = split_indices[i + 1]
+        segment_data = accumulated_data[start_index:end_index]
+        segment_df = pd.DataFrame(segment_data)
+        df_segments.append(segment_df)  # Append segment to the list
 
+    # Concatenate all segments at once
+    df_function = pd.concat(df_segments, ignore_index=True)
+
+    # Free up memory
+    del df_segments
     del accumulated_data
+    
 
     # reset index for masking
     df_function.reset_index(drop=True, inplace=True) 
@@ -620,7 +688,7 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, zero_value_flag,
 
     end = time.time()
     logger.debug(f"Time lapsed for decoding *CALL data {(end-start)}")
-    return df_function, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi
+    return df_function#, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi
 
 def process_abi(abi, contract_address_tmp, node_url):
     """
