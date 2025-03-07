@@ -1,4 +1,5 @@
-import trace_decoder.decoder as decoder
+from . import decoder
+# import trace_decoder.decoder as decoder
 import pandas as pd
 from logging_config import setup_logging
 

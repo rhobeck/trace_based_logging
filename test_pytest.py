@@ -1,10 +1,10 @@
-import raw_trace_retriever.get_transactions as get_transactions
-import raw_trace_retriever.trace_transformation as trace_transformation
-import raw_trace_retriever.helpers as helpers
-import raw_trace_retriever.create_relations as create_relations
-import trace_decoder.data_preparation as data_preparation
-import trace_decoder.event_decoder as event_decoder
-import log_construction.utils as utils
+import src.trace_based_logging.raw_trace_retriever.get_transactions as get_transactions
+import src.trace_based_logging.raw_trace_retriever.trace_transformation as trace_transformation
+import src.trace_based_logging.raw_trace_retriever.helpers as helpers
+import src.trace_based_logging.raw_trace_retriever.create_relations as create_relations
+import src.trace_based_logging.trace_decoder.data_preparation as data_preparation
+import src.trace_based_logging.trace_decoder.event_decoder as event_decoder
+import src.trace_based_logging.log_construction.utils as utils
 import pickle
 import os
 import pandas as pd
@@ -103,25 +103,28 @@ def test_get_transactions_by_events():
     
 def test_json_retriever():
     # Load a correct, pickled trace for comparison 
-    path = os.path.join(dir_path, 'tests', 'test_resources', 'trace_json_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29.pkl')
-    trace_json_lx_read = pickle.load(open(path, 'rb'))
+    path = os.path.join(dir_path, 'tests', 'test_resources', 'trace_json_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29_erigon2.pkl')
+    trace_json_lx_read_erigon2 = pickle.load(open(path, 'rb'))
+    
+    path = os.path.join(dir_path, 'tests', 'test_resources', 'trace_json_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29_erigon3.pkl')
+    trace_json_lx_read_erigon3 = pickle.load(open(path, 'rb'))
+
     # correct tx hash, all should be fine
     json_dict, json_flag = trace_transformation.json_retriever("0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29", node_url)
     assert json_flag == True
-    assert json_dict == trace_json_lx_read
+    assert json_dict in [trace_json_lx_read_erigon2, trace_json_lx_read_erigon3]
     # case sensitivity, all should be fine
     json_dict, json_flag = trace_transformation.json_retriever("0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697DC29", node_url)
     assert json_flag == True
-    assert json_dict == trace_json_lx_read
+    assert json_dict in [trace_json_lx_read_erigon2, trace_json_lx_read_erigon3]
     # random string as tx hash
     json_dict, json_flag = trace_transformation.json_retriever("string_that_is_no_tx_hash", node_url)
     assert json_flag == False
-    assert json_dict != trace_json_lx_read
+    assert json_dict not in [trace_json_lx_read_erigon2, trace_json_lx_read_erigon3]
     # length of a hash, but faulty digit (final number: 8 instead of 7)
     json_dict, json_flag = trace_transformation.json_retriever("0xbceb9db10ec228dbef251b1a48bc0b3f03a8d345f7f3b454d8cc1e86f380b6d8", node_url)
     assert json_flag == False
-    assert json_dict != trace_json_lx_read
-
+    assert json_dict not in [trace_json_lx_read_erigon2, trace_json_lx_read_erigon3]
 
 def test_txs_to_trace():
     # We test: Does the number of entries in the resulting dataframe reflect the number of entries in the JSON-trace

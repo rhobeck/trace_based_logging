@@ -1,9 +1,9 @@
-import raw_trace_retriever.get_transactions as get_transactions
-import raw_trace_retriever.get_txIndex as get_txIndex
-import raw_trace_retriever.trace_transformation as trace_transformation
-import raw_trace_retriever.create_relations as create_relations
-import raw_trace_retriever.helpers as helpers
-import trace_decoder.data_preparation as data_preparation
+import src.trace_based_logging.raw_trace_retriever.get_transactions as get_transactions
+import src.trace_based_logging.raw_trace_retriever.get_txIndex as get_txIndex
+import src.trace_based_logging.raw_trace_retriever.trace_transformation as trace_transformation
+import src.trace_based_logging.raw_trace_retriever.create_relations as create_relations
+import src.trace_based_logging.raw_trace_retriever.helpers as helpers
+import src.trace_based_logging.trace_decoder.data_preparation as data_preparation
 import pandas as pd
 import time
 import os 

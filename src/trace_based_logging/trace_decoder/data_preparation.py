@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
-import trace_decoder.event_decoder as event_decoder
+from . import event_decoder
+# import trace_decoder.event_decoder as event_decoder
 import datetime
 import time
 import requests
@@ -279,7 +280,7 @@ def create_abi_dict(addresses, etherscan_api_key):
         
         logger.info(f"ABI dictionary: {len(verified_addresses)+len(non_verified_addresses)} of {len(addresses)} addresses. Number of valid ABIs: {len(dict_abi)}")
     
-    logger.info(f"{len(dict_abi)} contract ABI(s) retrieved {f} contract(s) without verified ABI(s)")
+    logger.info(f"{len(dict_abi)} contract ABI(s) retrieved. {f} contract(s) without verified ABI(s)")
     
     return dict_abi#, non_verified_addresses, verified_addresses
 
@@ -338,6 +339,7 @@ def decode_events(df_log, dict_abi):
     txs_event_not_decoded = list()
 
     # load fallback_abis
+    dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
     path = os.path.join(dir_path, 'config_custom_events.json')
     fallback_abis = load_event_definitions(path)
 
