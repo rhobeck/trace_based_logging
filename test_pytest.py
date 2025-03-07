@@ -1,10 +1,10 @@
 import src.trace_based_logging.raw_trace_retriever.get_transactions as get_transactions
 import src.trace_based_logging.raw_trace_retriever.trace_transformation as trace_transformation
-import src.trace_based_logging.raw_trace_retriever.helpers as helpers
+import src.trace_based_logging.raw_trace_retriever.trace_retriever_utils as trace_retriever_utils
 import src.trace_based_logging.raw_trace_retriever.create_relations as create_relations
 import src.trace_based_logging.trace_decoder.data_preparation as data_preparation
 import src.trace_based_logging.trace_decoder.event_decoder as event_decoder
-import src.trace_based_logging.log_construction.utils as utils
+import src.trace_based_logging.log_construction.log_construction_utils as log_construction_utils
 import pickle
 import os
 import pandas as pd
@@ -130,14 +130,14 @@ def test_txs_to_trace():
     # We test: Does the number of entries in the resulting dataframe reflect the number of entries in the JSON-trace
     path = os.path.join(dir_path, 'tests', 'test_resources', 'df_txs_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29.pkl')
     df_txs_lx = pickle.load(open(path, 'rb'))
-    path = os.path.join(dir_path, 'tests', 'test_resources', 'trace_json_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29.pkl')
+    path = os.path.join(dir_path, 'tests', 'test_resources', 'trace_json_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29_erigon2.pkl')
     trace_json_lx_read = pickle.load(open(path, 'rb'))    
     df_trace_lx = trace_transformation.tx_to_trace(df_txs_lx, node_url)
     
     # get the number of referrals between smart contracts (CALL, CREATE, DELEGATECALL, etc.) in the trace
-    number_of_referrals = helpers.count_string_occurrences_in_keys(trace_json_lx_read, "type")
+    number_of_referrals = trace_retriever_utils.count_string_occurrences_in_keys(trace_json_lx_read, "type")
     # get the number of events in the trace
-    number_of_events = helpers.count_string_occurrences_in_keys(trace_json_lx_read, "topics")
+    number_of_events = trace_retriever_utils.count_string_occurrences_in_keys(trace_json_lx_read, "topics")
     
     assert len(df_trace_lx) == (number_of_events+number_of_referrals) # == 571
     
@@ -287,7 +287,7 @@ def test_decode_events():
     
 def test_event_decoder():
     
-    path = os.path.join(dir_path, 'config_custom_events.json')
+    path = os.path.join(dir_path, 'src', 'trace_based_logging', 'trace_decoder','config_custom_events.json')
     fallback_abis = load_event_definitions(path)
     
     tx_ERC_20_Transfer = "0xc4f4145f215d491be7123beacffe51d3d007a8060aab92826946c0dc744a9349"

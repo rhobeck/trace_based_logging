@@ -1,7 +1,7 @@
 from contextlib import closing
 import socket
 
-from logging_config import setup_logging
+from src.trace_based_logging.logging_config import setup_logging
 
 # Create a logger
 logger = setup_logging()
@@ -10,20 +10,6 @@ def low(x):
     """
     Converts the input string to lowercase. If the input is not a string, 
     an appropriate error is raised.
-
-    Args:
-        x (str): The string to be converted to lowercase.
-
-    Returns:
-        str: A new string with all characters in lowercase.
-
-    Raises:
-        TypeError: If the input is not a string.
-
-    Example:
-        >>> low("HeLLo WoRLD")
-        'hello world'
-        >>> low(123)  # This will raise a TypeError
     """
     if not isinstance(x, str):
         raise TypeError("Input must be a string")

@@ -8,7 +8,7 @@ import requests
 import json
 from web3 import Web3, HTTPProvider
 import os
-from logging_config import setup_logging
+from src.trace_based_logging.logging_config import setup_logging
 
 
 
@@ -339,7 +339,7 @@ def decode_events(df_log, dict_abi):
     txs_event_not_decoded = list()
 
     # load fallback_abis
-    dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
     path = os.path.join(dir_path, 'config_custom_events.json')
     fallback_abis = load_event_definitions(path)
 

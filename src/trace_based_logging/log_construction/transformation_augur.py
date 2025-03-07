@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import os
 import pickle
-import utils
+import src.trace_based_logging.log_construction.log_construction_utils as log_construction_utils
 import address_classification
 import json
 from web3 import Web3
@@ -101,16 +101,16 @@ print("Number of reverted transactions: ", len(txs_reverted))
 path = os.path.join(dir_path, "resources", 'df_events_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
 events_dapp = pickle.load(open(path, "rb"))
 
-events_dapp = utils.initial_transformation_events(events_dapp, True, txs_reverted)
+events_dapp = log_construction_utils.initial_transformation_events(events_dapp, True, txs_reverted)
 
 # rename events
-events_dapp = utils.rename_attribute(events_dapp, "Activity", "Activity", mappings["event_map_dapp"])
+events_dapp = log_construction_utils.rename_attribute(events_dapp, "Activity", "Activity", mappings["event_map_dapp"])
 
 # re-label contracts 
-events_dapp = utils.label_contracts(events_dapp, mappings, creations, contracts_dapp)
+events_dapp = log_construction_utils.label_contracts(events_dapp, mappings, creations, contracts_dapp)
 
 # name token types in tokens minted / transferred / burned
-events_dapp = utils.rename_attribute(events_dapp, "tokenType", "tokenType_name", mappings["token_map"])
+events_dapp = log_construction_utils.rename_attribute(events_dapp, "tokenType", "tokenType_name", mappings["token_map"])
 
 if sensitive_events == True:
     activity_split_candidates = [
@@ -120,18 +120,18 @@ if sensitive_events == True:
         "burn tokens"
     ]
 
-    events_dapp = utils.create_contract_sensitive_events(events_dapp, mappings, creations, contracts_dapp, activity_split_candidates)
+    events_dapp = log_construction_utils.create_contract_sensitive_events(events_dapp, mappings, creations, contracts_dapp, activity_split_candidates)
 
     
     # add token type names to the activity names
-    events_dapp = utils.combine_attributes(events_dapp, "Activity", "tokenType_name", "Activity_token_sensitive", ", token type: ", [])
+    events_dapp = log_construction_utils.combine_attributes(events_dapp, "Activity", "tokenType_name", "Activity_token_sensitive", ", token type: ", [])
 
     # Propagate the extracted information to all activities with the same 'marketId'
-    market_info = utils.propagate_extraInfo(events_dapp)
+    market_info = log_construction_utils.propagate_extraInfo(events_dapp)
     events_dapp = pd.merge(events_dapp, market_info, on='market', how='left')
 
     # Propagate the 'marketType' information to all activities with the same 'marketId'
-    market_type_info = utils.propagate_marketType(events_dapp)
+    market_type_info = log_construction_utils.propagate_marketType(events_dapp)
     events_dapp = pd.merge(events_dapp, market_type_info, on='market', how='left', suffixes=('', '_propagated'))
 
 else: 
@@ -163,11 +163,11 @@ del events_dapp
 path = os.path.join(dir_path, "resources", 'df_call_dapp_with_ether_transfer_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
 calls_dapp = pickle.load(open(path, "rb"))
 
-calls_dapp = utils.initial_transformation_calls(calls_dapp, True, txs_reverted)
+calls_dapp = log_construction_utils.initial_transformation_calls(calls_dapp, True, txs_reverted)
 
-calls_dapp = utils.rename_attribute(calls_dapp, "Activity", "Activity", mappings["calls_map_dapp"])
+calls_dapp = log_construction_utils.rename_attribute(calls_dapp, "Activity", "Activity", mappings["calls_map_dapp"])
 
-calls_dapp = utils.label_contracts(calls_dapp, mappings, creations, contracts_dapp)
+calls_dapp = log_construction_utils.label_contracts(calls_dapp, mappings, creations, contracts_dapp)
 
 # convert hex values
 for hexCol in ["orderId", 'betterOrderId', 'worseOrderId', 'tradeGroupId']:
@@ -181,7 +181,7 @@ if sensitive_events == True:
         "call trade with limit"
     ]
 
-    calls_dapp = utils.create_contract_sensitive_events(calls_dapp, mappings, creations, contracts_dapp, activity_split_candidates)
+    calls_dapp = log_construction_utils.create_contract_sensitive_events(calls_dapp, mappings, creations, contracts_dapp, activity_split_candidates)
 
     # Propagate the extracted information to all activities with the same 'marketId'
     calls_dapp = pd.merge(calls_dapp, market_info, on='market', how='left')
@@ -212,11 +212,11 @@ del calls_dapp
 path = os.path.join(dir_path, "resources", 'df_delegatecall_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.pkl')
 delegatecalls_dapp = pickle.load(open(path, "rb"))
 
-delegatecalls_dapp = utils.initial_transformation_calls(delegatecalls_dapp, True, txs_reverted)
+delegatecalls_dapp = log_construction_utils.initial_transformation_calls(delegatecalls_dapp, True, txs_reverted)
 
-delegatecalls_dapp = utils.rename_attribute(delegatecalls_dapp, "Activity", "Activity", mappings["delegatecalls_map_dapp"])
+delegatecalls_dapp = log_construction_utils.rename_attribute(delegatecalls_dapp, "Activity", "Activity", mappings["delegatecalls_map_dapp"])
 
-delegatecalls_dapp = utils.label_contracts(delegatecalls_dapp, mappings, creations, contracts_dapp)
+delegatecalls_dapp = log_construction_utils.label_contracts(delegatecalls_dapp, mappings, creations, contracts_dapp)
 
 
 for hexCol in ["orderId", 'betterOrderId', 'worseOrderId', 'tradeGroupId']:
@@ -255,7 +255,7 @@ if sensitive_events == True:
         'delegate call to liquidate losing'
         ]
 
-    delegatecalls_dapp = utils.create_contract_sensitive_events(delegatecalls_dapp, mappings, creations, contracts_dapp, activity_split_candidates)
+    delegatecalls_dapp = log_construction_utils.create_contract_sensitive_events(delegatecalls_dapp, mappings, creations, contracts_dapp, activity_split_candidates)
 
     # Propagate the extracted information to all activities with the same 'marketId'
     delegatecalls_dapp = pd.merge(delegatecalls_dapp, market_info, on='market', how='left')
@@ -269,7 +269,7 @@ if sensitive_events == True:
 else: 
     print("Sensitive events were not created. Reason: sensitive_events-flag == false")
 
-utils.count_events(delegatecalls_dapp, "Activity")
+log_construction_utils.count_events(delegatecalls_dapp, "Activity")
 
 print(f"Number of DELEGATECALLs DAPP: {len(delegatecalls_dapp)} -- Now saving ...")
 
@@ -340,11 +340,11 @@ path = os.path.join(dir_path, "resources", 'df_call_dapp_with_no_ether_transfer_
 calls_dapp_zero_value = pickle.load(open(path, "rb"))
 
 calls_dapp_zero_value.reset_index(drop=True, inplace=True)
-calls_dapp_zero_value = utils.initial_transformation_calls(calls_dapp_zero_value, True, txs_reverted)
+calls_dapp_zero_value = log_construction_utils.initial_transformation_calls(calls_dapp_zero_value, True, txs_reverted)
 
-calls_dapp_zero_value = utils.rename_attribute(calls_dapp_zero_value, "Activity", "Activity", mappings["calls_zero_value_map_dapp"])
+calls_dapp_zero_value = log_construction_utils.rename_attribute(calls_dapp_zero_value, "Activity", "Activity", mappings["calls_zero_value_map_dapp"])
 
-calls_dapp_zero_value = utils.label_contracts(calls_dapp_zero_value, mappings, creations, contracts_dapp)
+calls_dapp_zero_value = log_construction_utils.label_contracts(calls_dapp_zero_value, mappings, creations, contracts_dapp)
 
 for hexCol in ["orderId", 'betterOrderId', 'worseOrderId', 'tradeGroupId']:
     calls_dapp_zero_value[hexCol] = calls_dapp_zero_value[hexCol].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else np.nan)
@@ -441,7 +441,7 @@ if sensitive_events == True:
         "call to approve"
     ]
 
-    calls_dapp_zero_value = utils.create_contract_sensitive_events(calls_dapp_zero_value, mappings, creations, contracts_dapp, activity_split_candidates)
+    calls_dapp_zero_value = log_construction_utils.create_contract_sensitive_events(calls_dapp_zero_value, mappings, creations, contracts_dapp, activity_split_candidates)
 
     # Propagate the extracted information to all activities with the same 'marketId'
     calls_dapp_zero_value = pd.merge(calls_dapp_zero_value, market_info, on='market', how='left')
@@ -480,7 +480,7 @@ calls_dapp_zero_value.to_csv(path)
 path = os.path.join(dir_path, "resources", log_folder, file_name_snipped + base_contract + "_" + str(min_block) + "_" + str(max_block) + ".pkl")
 pickle.dump(calls_dapp_zero_value, open(path, 'wb'))
 
-utils.count_events(calls_dapp_zero_value, "Activity")
+log_construction_utils.count_events(calls_dapp_zero_value, "Activity")
 
 del calls_dapp_zero_value
 

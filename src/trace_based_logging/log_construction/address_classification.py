@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-import utils
+import src.trace_based_logging.log_construction.log_construction_utils as log_construction_utils
 from web3 import Web3
 
 
@@ -171,7 +171,7 @@ def combine_min_block_numbers(dict_list):
 
 def annotate_addresses(addresses, addresses_w_min_block_numbers, node_url, creations, contracts_dapp, mappings):
     w3 = Web3(Web3.HTTPProvider(node_url))
-    contract_name_map = utils.label_contracts_by_relative(creations, contracts_dapp, mappings["factory_contract_map"])
+    contract_name_map = log_construction_utils.label_contracts_by_relative(creations, contracts_dapp, mappings["factory_contract_map"])
     address_dict = {}
     for address in addresses:
              
@@ -179,7 +179,7 @@ def annotate_addresses(addresses, addresses_w_min_block_numbers, node_url, creat
         
         address_type = address_type_check(address, addresses_w_min_block_numbers, w3)
 
-        contract_label = utils.label_contract(address, mappings, contract_name_map)
+        contract_label = log_construction_utils.label_contract(address, mappings, contract_name_map)
             
         address_dict[address] = {"dapp_flag": dapp_flag, "type": address_type, "contract_label": contract_label}
 

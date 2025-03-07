@@ -2,9 +2,24 @@ import pandas as pd
 import json
 from web3 import Web3
 
+from src.trace_based_logging.logging_config import setup_logging
+
+# Create a logger
+logger = setup_logging()
 
 def low(x):
-    return x.lower()
+    """
+    Converts the input string to lowercase. If the input is not a string, 
+    an appropriate error is raised.
+    """
+    if not isinstance(x, str):
+        raise TypeError("Input must be a string")
+
+    try:
+        return x.lower()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        raise ValueError(f"Failed to convert to lowercase due to an unexpected error: {e}")
 
 
 def initial_transformation_events(df, dapp_flag, txs_reverted):
