@@ -571,7 +571,7 @@ del events_dapp
 '''
 
 #################### ACCOUNT DICTIONARY ####################  
-# get the port to the Etherem node for querying addresses
+# get the port to the Ethereum node for querying addresses
 dir_path = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..'))
 path = os.path.join(dir_path, 'config.json')
 

@@ -33,7 +33,6 @@ def build_node_url(config):
     return f"{config['protocol']}{config['host']}:{config['port']}"
 
 def initialize_extraction_state(config, utils_module):
-    # Use the low() function from your raw_trace_retriever.utils (here imported as utils_module)
     contracts_lx = list(map(utils_module.low, config["list_contracts"]))
     non_dapp_contracts = list(map(utils_module.low, config["list_predefined_non_dapp_contracts"]))
     return {
@@ -41,6 +40,6 @@ def initialize_extraction_state(config, utils_module):
         "base_contract": contracts_lx[0],
         "contracts_dapp": set(contracts_lx),
         "all_transactions": set(),
-        "trace_tree": None,  # Will be a pandas DataFrame later
+        "trace_tree": None,  
         "non_dapp_contracts": set(non_dapp_contracts)
     }
