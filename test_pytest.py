@@ -4,7 +4,7 @@ import src.trace_based_logging.raw_trace_retriever.trace_retriever_utils as trac
 import src.trace_based_logging.raw_trace_retriever.create_relations as create_relations
 import src.trace_based_logging.trace_decoder.data_preparation as data_preparation
 import src.trace_based_logging.trace_decoder.event_decoder as event_decoder
-import src.trace_based_logging.log_construction.log_construction_utils as log_construction_utils
+import trace_based_logging.log_construction.transformation_augur_utils as transformation_augur_utils
 import pickle
 import os
 import pandas as pd

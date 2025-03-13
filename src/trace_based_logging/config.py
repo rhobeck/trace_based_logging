@@ -21,7 +21,7 @@ def validate_config(config):
         "dapp_decode_events", "dapp_decode_calls_with_ether_transfer", "dapp_decode_calls_with_no_ether_transfer",
         "dapp_decode_delegatecalls", "non_dapp_decode_events", "non_dapp_decode_calls_with_ether_transfer",
         "non_dapp_decode_calls_with_no_ether_transfer", "non_dapp_decode_delegatecalls", "etherscan_api_key",
-        "list_predefined_non_dapp_contracts"
+        "list_predefined_non_dapp_contracts", "sensitive_events"
     ]
     for key in required_keys:
         if key not in config:

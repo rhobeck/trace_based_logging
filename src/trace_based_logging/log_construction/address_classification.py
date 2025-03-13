@@ -1,8 +1,10 @@
 import os
 import pandas as pd
-import src.trace_based_logging.log_construction.log_construction_utils as log_construction_utils
+import src.trace_based_logging.log_construction.transformation_augur_utils as transformation_augur_utils
 from web3 import Web3
+from src.trace_based_logging.logging_config import setup_logging
 
+logger = setup_logging()
 
 def define_address_columns():
     columns_events = [
@@ -102,7 +104,8 @@ def define_address_columns():
 def define_addresses(columns, df):
     addresses = set()
     for column in columns:
-        addresses.update(df[column].dropna())
+        if column in df.columns:
+            addresses.update(df[column].dropna())
     addresses = {str(address).lower() for address in addresses}    
     return addresses
 
@@ -115,8 +118,9 @@ def get_min_block_numbers(addresses_df, address_cols, addresses):
     """
     # Ensure all strings in the address_cols are lowercase and handle non-string entries
     for col in address_cols:
-        if addresses_df[col].dtype != "object":  # Convert non-strings to strings
-            addresses_df[col] = addresses_df[col].astype(str)
+        if col in addresses_df.columns:
+            if addresses_df[col].dtype != "object":  # Convert non-strings to strings
+                addresses_df[col] = addresses_df[col].astype(str)
         addresses_df[col] = addresses_df[col].str.lower().fillna("")  # Convert to lowercase and handle NaN
 
     # **Add this step to normalize the 'addresses' set**
@@ -171,7 +175,7 @@ def combine_min_block_numbers(dict_list):
 
 def annotate_addresses(addresses, addresses_w_min_block_numbers, node_url, creations, contracts_dapp, mappings):
     w3 = Web3(Web3.HTTPProvider(node_url))
-    contract_name_map = log_construction_utils.label_contracts_by_relative(creations, contracts_dapp, mappings["factory_contract_map"])
+    contract_name_map = transformation_augur_utils.label_contracts_by_relative(creations, contracts_dapp, mappings["factory_contract_map"])
     address_dict = {}
     for address in addresses:
              
@@ -179,7 +183,7 @@ def annotate_addresses(addresses, addresses_w_min_block_numbers, node_url, creat
         
         address_type = address_type_check(address, addresses_w_min_block_numbers, w3)
 
-        contract_label = log_construction_utils.label_contract(address, mappings, contract_name_map)
+        contract_label = transformation_augur_utils.label_contract(address, mappings, contract_name_map)
             
         address_dict[address] = {"dapp_flag": dapp_flag, "type": address_type, "contract_label": contract_label}
 
@@ -210,57 +214,101 @@ def dapp_check(address, contracts_dapp):
 
 
 
-def create_address_dict(base_contract, log_folder, dir_path, min_block, max_block, contracts_dapp, node_url, creations, mappings):
-    
+def create_address_dict(base_contract, log_folder, dir_path, min_block, max_block, contracts_dapp, node_url, creations, mappings, toggles):
+    # Define the columns for each address category.
     columns_events, columns_calls_dapp, columns_delegatecalls_dapp, columns_calls_zero_value_dapp, columns_creations_dapp = define_address_columns()
-    
-    path = os.path.join(dir_path, "resources", log_folder, 'calls_dapp_zero_value_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-    cols = columns_calls_zero_value_dapp + ["blockNumber"]
-    calls_dapp_zero_value = pd.read_csv(path, usecols=cols)
-    #calls_dapp_zero_value = pickle.load(open(path, "rb"))
-    addresses_calls_zero_dapp = define_addresses(columns_calls_zero_value_dapp, calls_dapp_zero_value)
-    dict_calls_zero_dapp = get_min_block_numbers(calls_dapp_zero_value, columns_calls_zero_value_dapp, addresses_calls_zero_dapp)
-    del calls_dapp_zero_value
 
+    # Initialize empty sets and dictionaries for each category.
+    addresses_events_dapp = set()
+    dict_events_dapp = {}
+    addresses_calls_dapp = set()
+    dict_calls_dapp = {}
+    addresses_delegatecalls_dapp = set()
+    dict_delegatecalls_dapp = {}
+    addresses_calls_zero_dapp = set()
+    dict_calls_zero_dapp = {}
+    addresses_creations_dapp = set()
+    dict_creations_dapp = {}
 
-    path = os.path.join(dir_path, "resources", log_folder, 'events_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-    cols = columns_events + ["blockNumber"]
-    events_dapp = pd.read_csv(path, usecols=cols)
-    #events_dapp = pickle.load(open(path, "rb"))
-    addresses_events_dapp = define_addresses(columns_events, events_dapp)
-    dict_events_dapp = get_min_block_numbers(events_dapp, columns_events, addresses_events_dapp)
-    del events_dapp
+    # Process ZERO VALUE CALLS DAPP if enabled.
+    if toggles.get("zero_value_calls_dapp", False):
+        path = os.path.join(dir_path, log_folder,
+                            f'calls_dapp_zero_value_{base_contract}_{min_block}_{max_block}.csv')
+        cols = columns_calls_zero_value_dapp + ["blockNumber"]
+        calls_dapp_zero_value = pd.read_csv(path, usecols=cols)
+        addresses_calls_zero_dapp = define_addresses(columns_calls_zero_value_dapp, calls_dapp_zero_value)
+        dict_calls_zero_dapp = get_min_block_numbers(calls_dapp_zero_value, columns_calls_zero_value_dapp, addresses_calls_zero_dapp)
+        del calls_dapp_zero_value
+    else:
+        logger.info("Skipping ZERO VALUE CALLS DAPP for address dict.")
 
-    path = os.path.join(dir_path, "resources", log_folder, 'calls_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-    cols = columns_calls_dapp + ["blockNumber"]
-    calls_dapp = pd.read_csv(path, usecols=cols)
-    #calls_dapp = pickle.load(open(path, "rb"))
-    addresses_calls_dapp = define_addresses(columns_calls_dapp, calls_dapp)
-    dict_calls_dapp = get_min_block_numbers(calls_dapp, columns_calls_dapp, addresses_calls_dapp)
-    del calls_dapp
+    # Process EVENTS DAPP if enabled.
+    if toggles.get("events_dapp", False):
+        path = os.path.join(dir_path, log_folder,
+                            f'events_dapp_{base_contract}_{min_block}_{max_block}.csv')
+        cols = columns_events + ["blockNumber"]
+        events_dapp = pd.read_csv(path, usecols=cols)
+        addresses_events_dapp = define_addresses(columns_events, events_dapp)
+        dict_events_dapp = get_min_block_numbers(events_dapp, columns_events, addresses_events_dapp)
+        del events_dapp
+    else:
+        logger.info("Skipping EVENTS DAPP for address dict.")
 
-    path = os.path.join(dir_path, "resources", log_folder, 'delegatecalls_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-    cols = columns_delegatecalls_dapp + ["blockNumber"]
-    delegatecalls_dapp = pd.read_csv(path, usecols=cols)
-    #delegatecalls_dapp = pickle.load(open(path, "rb"))
-    addresses_delegatecalls_dapp = define_addresses(columns_delegatecalls_dapp, delegatecalls_dapp)
-    dict_delegatecalls_dapp = get_min_block_numbers(delegatecalls_dapp, columns_delegatecalls_dapp, addresses_delegatecalls_dapp)
-    del delegatecalls_dapp
+    # Process CALLS DAPP if enabled.
+    if toggles.get("calls_dapp", False):
+        path = os.path.join(dir_path, log_folder,
+                            f'calls_dapp_{base_contract}_{min_block}_{max_block}.csv')
+        cols = columns_calls_dapp + ["blockNumber"]
+        calls_dapp = pd.read_csv(path, usecols=cols)
+        addresses_calls_dapp = define_addresses(columns_calls_dapp, calls_dapp)
+        dict_calls_dapp = get_min_block_numbers(calls_dapp, columns_calls_dapp, addresses_calls_dapp)
+        del calls_dapp
+    else:
+        logger.info("Skipping CALLS DAPP for address dict.")
 
-    path = os.path.join(dir_path, "resources", log_folder, 'creations_dapp_' + base_contract + "_" + str(min_block) + "_" + str(max_block) + '.csv')
-    cols = columns_creations_dapp + ["blockNumber"]
-    creations_dapp = pd.read_csv(path, usecols=cols)
-    #delegatecalls_dapp = pickle.load(open(path, "rb"))
-    addresses_creations_dapp = define_addresses(columns_creations_dapp, creations_dapp)
-    dict_creations_dapp = get_min_block_numbers(creations_dapp, columns_creations_dapp, addresses_creations_dapp)
-    del creations_dapp
+    # Process DELEGATECALLS DAPP if enabled.
+    if toggles.get("delegatecalls_dapp", False):
+        path = os.path.join(dir_path, log_folder,
+                            f'delegatecalls_dapp_{base_contract}_{min_block}_{max_block}.csv')
+        cols = columns_delegatecalls_dapp + ["blockNumber"]
+        delegatecalls_dapp = pd.read_csv(path, usecols=cols)
+        addresses_delegatecalls_dapp = define_addresses(columns_delegatecalls_dapp, delegatecalls_dapp)
+        dict_delegatecalls_dapp = get_min_block_numbers(delegatecalls_dapp, columns_delegatecalls_dapp, addresses_delegatecalls_dapp)
+        del delegatecalls_dapp
+    else:
+        logger.info("Skipping DELEGATECALLS DAPP for address dict.")
 
-    addresses = contracts_dapp | addresses_events_dapp | addresses_calls_dapp | addresses_calls_zero_dapp | addresses_delegatecalls_dapp
+    # Process CREATIONS DAPP if enabled.
+    if toggles.get("creations_dapp", False):
+        path = os.path.join(dir_path, log_folder,
+                            f'creations_dapp_{base_contract}_{min_block}_{max_block}.csv')
+        cols = columns_creations_dapp + ["blockNumber"]
+        creations_dapp = pd.read_csv(path, usecols=cols)
+        addresses_creations_dapp = define_addresses(columns_creations_dapp, creations_dapp)
+        dict_creations_dapp = get_min_block_numbers(creations_dapp, columns_creations_dapp, addresses_creations_dapp)
+        del creations_dapp
+    else:
+        logger.info("Skipping CREATIONS DAPP for address dict.")
 
-    dict_list = [dict_calls_zero_dapp, dict_events_dapp, dict_calls_dapp, dict_delegatecalls_dapp, dict_creations_dapp]
+    # Combine addresses from all enabled categories.
+    addresses = contracts_dapp | addresses_events_dapp | addresses_calls_dapp | addresses_calls_zero_dapp | addresses_delegatecalls_dapp | addresses_creations_dapp
+
+    # Combine the min block numbers from all enabled categories.
+    dict_list = []
+    if toggles.get("zero_value_calls_dapp", False):
+        dict_list.append(dict_calls_zero_dapp)
+    if toggles.get("events_dapp", False):
+        dict_list.append(dict_events_dapp)
+    if toggles.get("calls_dapp", False):
+        dict_list.append(dict_calls_dapp)
+    if toggles.get("delegatecalls_dapp", False):
+        dict_list.append(dict_delegatecalls_dapp)
+    if toggles.get("creations_dapp", False):
+        dict_list.append(dict_creations_dapp)
 
     addresses_w_min_block_numbers = combine_min_block_numbers(dict_list)
 
+    # Annotate the addresses with additional metadata.
     address_dict = annotate_addresses(addresses, addresses_w_min_block_numbers, node_url, creations, contracts_dapp, mappings)
     
     return address_dict

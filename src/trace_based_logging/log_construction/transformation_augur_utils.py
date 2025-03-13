@@ -132,7 +132,9 @@ def rename_attribute(df_log, attribute, attribute_new, attribute_map):
     """
     # Check if the attribute exists in the DataFrame
     if attribute not in df_log.columns:
-        raise KeyError(f"Attribute '{attribute}' not found in DataFrame.")
+        logger.info(f"Attribute '{attribute}' not found, so cannot be renamed.")
+        #raise KeyError(f"Attribute '{attribute}' not found in DataFrame.")
+        return df_log
 
     # Rename the values using the mapping. Unmapped values remain unchanged.
     df_log[attribute_new] = df_log[attribute].astype(str).map(attribute_map).fillna(df_log[attribute])
@@ -430,7 +432,10 @@ def initial_transformation_calls(df_calls, dapp_flag, txs_reverted):
     df_calls["address_lower"] = df_calls[~df_calls["to"].isnull()]["to"].apply(lambda x: x.lower())
     
     if dapp_flag == True: 
-        df_calls["market"] = df_calls[~df_calls["market"].isnull()]["market"].apply(lambda x: x.lower())
+        if "market" in df_calls.columns:
+            df_calls["market"] = df_calls[~df_calls["market"].isnull()]["market"].apply(lambda x: x.lower())
+        else: 
+            logger.error("No 'markets' documented in DApp calls.")
 
     df_calls.rename(columns={"hash": "txHash"}, inplace=True)
 
@@ -447,7 +452,10 @@ def initial_transformation_calls(df_calls, dapp_flag, txs_reverted):
     # Hex values to int
     val_list = ["gas", "gasUsed", "callvalue"]
     for val in val_list:
-        df_calls.loc[:, val] = df_calls[val].apply(lambda x: int(x, 0) if str(x) != "nan" else None)
+        df_calls.loc[:, val] = df_calls[val].apply(lambda x: int(x, 0) if isinstance(x, str) and x.lower() != "nan" else (int(x) if pd.notnull(x) else None))
+
+    #for val in val_list:
+    #    df_calls.loc[:, val] = df_calls[val].apply(lambda x: int(x, 0) if str(x) != "nan" else None)
         
     # sort out Activity names
     # use only function name from the whole function call string

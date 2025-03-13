@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 import os
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -34,7 +33,6 @@ def main():
     except Exception as e:
         logger.error(f"Error in extraction phase: {e}")
     
-    
     try:
         logger.info("Starting decoding phase")
         from src.trace_based_logging.trace_decoder import data_preparation
@@ -48,7 +46,19 @@ def main():
         decode_all(df_log, state, config, dict_abi, build_node_url)
     except Exception as e:
         logger.error(f"Error in decoding phase: {e}")
-        
+
+    try:
+        logger.info("Starting transformation phase")
+        from src.trace_based_logging.log_construction import transformation_augur
+        dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        RESOURCES_DIR = os.path.join(dir_path, "resources")
+    
+        LOG_FOLDER = config["log_folder"]
+
+        transformation_augur.transform_augur_data(RESOURCES_DIR, LOG_FOLDER, config, state["base_contract"], build_node_url)
+    except Exception as e:
+        logger.error(f"Error in transformation phase: {e}")
+                
     print("DONE")
 
 if __name__ == '__main__':
