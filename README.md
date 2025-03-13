@@ -61,7 +61,7 @@ Before running the main script, configure the json files in the project folder.
 
 To execute the main function of the project, run:
 ```console
-python main.py
+python src/trace_based_logging/__main__.py
 ```
 
 The resulting files contain tabular transaction trace data. Case-specific data transformation helps to create meaningful activity labels and objects. An example implementation for the DApp Augur is provided in [example_transformation_augur.py](log_construction/transformation_augur.py).  

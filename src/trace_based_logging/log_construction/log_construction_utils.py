@@ -45,11 +45,19 @@ def initial_transformation_events(df, dapp_flag, txs_reverted):
     # Convert addresses to lowercase
     df["address_lower"] = df[~df["address"].isnull()]["address"].apply(lambda x: x.lower())
     if dapp_flag == True: 
-        df["market"] = df[~df["market"].isnull()]["market"].apply(lambda x: x.lower())
+        if "market" in df.columns:
+            df["market"] = df[~df["market"].isnull()]["market"].apply(lambda x: x.lower())
 
     # Rename columns for consistency
-    df.rename(columns={"hash": "txHash"}, inplace=True)
-    df.rename(columns={"name": "Activity"}, inplace=True)
+    if "hash" in df.columns:
+        df.rename(columns={"hash": "txHash"}, inplace=True)
+    else: 
+        logger.error("No 'hash' column found.")
+        
+    if "name" in df.columns:
+        df.rename(columns={"name": "Activity"}, inplace=True)
+    else:
+        logger.error("No 'name' column found.")
 
     # Remove unnecessary columns if present
     if "Unnamed: 0" in df.columns.values.tolist():

@@ -26,6 +26,8 @@ def validate_config(config):
     for key in required_keys:
         if key not in config:
             raise ValueError(f"Missing required configuration key: {key}")
+        if key == "etherscan_api_key" and config[key] == "ETHERSCAN_API_KEY":
+            raise ValueError("Please provide your Etherscan API key in the configuration file")
 
 def build_node_url(config):
     return f"{config['protocol']}{config['host']}:{config['port']}"
