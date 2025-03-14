@@ -18,9 +18,9 @@ def validate_config(config):
     required_keys = [
         "port", "protocol", "host", "list_contracts", "min_block", "max_block",
         "extract_normal_transactions", "extract_internal_transactions", "extract_transactions_by_events",
-        "dapp_decode_events", "dapp_decode_calls_with_ether_transfer", "dapp_decode_calls_with_no_ether_transfer",
-        "dapp_decode_delegatecalls", "non_dapp_decode_events", "non_dapp_decode_calls_with_ether_transfer",
-        "non_dapp_decode_calls_with_no_ether_transfer", "non_dapp_decode_delegatecalls", "etherscan_api_key",
+        "events_dapp", "calls_dapp", "zero_value_calls_dapp",
+        "delegatecalls_dapp", "events_non_dapp", "calls_non_dapp",
+        "zero_value_calls_non_dapp", "delegatecalls_non_dapp", "etherscan_api_key",
         "list_predefined_non_dapp_contracts", "sensitive_events"
     ]
     for key in required_keys:

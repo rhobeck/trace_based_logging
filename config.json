@@ -15,12 +15,14 @@
     "extract_internal_transactions": true,
     "extract_transactions_by_events": true,
     "etherscan_api_key": "ETHERSCAN_API_KEY",
-    "dapp_decode_events": true,
-    "dapp_decode_calls_with_ether_transfer": false,
-    "dapp_decode_calls_with_no_ether_transfer": false, 
-    "dapp_decode_delegatecalls": false,
-    "non_dapp_decode_events": false,
-    "non_dapp_decode_calls_with_ether_transfer": false,
-    "non_dapp_decode_calls_with_no_ether_transfer": false, 
-    "non_dapp_decode_delegatecalls": false
+    "events_dapp": true,
+    "calls_dapp": true,
+    "delegatecalls_dapp": true,
+    "zero_value_calls_dapp": true, 
+    "events_non_dapp": true,
+    "calls_non_dapp": true,
+    "zero_value_calls_non_dapp": true, 
+    "delegatecalls_non_dapp": true,
+    "sensitive_events": false,
+    "log_folder": "log_120325"
 }

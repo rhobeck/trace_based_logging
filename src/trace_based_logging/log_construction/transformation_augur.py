@@ -128,7 +128,8 @@ def transform_delegatecalls_dapp(resources_dir, base_contract, min_block, max_bl
     dcalls = transformation_augur_utils.rename_attribute(dcalls, "Activity", "Activity", mappings["delegatecalls_map_dapp"])
     dcalls = transformation_augur_utils.label_contracts(dcalls, mappings, creations, contracts_dapp)
     for col in ["orderId", "betterOrderId", "worseOrderId", "tradeGroupId"]:
-        dcalls[col] = dcalls[col].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else pd.NA)
+        if col in dcalls.columns: 
+            dcalls[col] = dcalls[col].apply(lambda x: "0x" + x.hex() if pd.notnull(x) and isinstance(x, bytes) else str(x) if pd.notnull(x) else pd.NA)
     if sensitive_events:
         activity_split_candidates = [
             'delegate call to get REP token', 'delegate call to approve', 'delegate call to get universe', 
@@ -161,7 +162,8 @@ def transform_zero_value_calls_dapp(resources_dir, base_contract, min_block, max
     zcalls = transformation_augur_utils.rename_attribute(zcalls, "Activity", "Activity", mappings["calls_zero_value_map_dapp"])
     zcalls = transformation_augur_utils.label_contracts(zcalls, mappings, creations, contracts_dapp)
     for col in ["orderId", "betterOrderId", "worseOrderId", "tradeGroupId"]:
-        zcalls[col] = zcalls[col].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else pd.NA)
+        if col in zcalls.columns:
+            zcalls[col] = zcalls[col].apply(lambda x: "0x" + x.hex() if pd.notnull(x) and isinstance(x, bytes) else str(x) if pd.notnull(x) else pd.NA)
     if sensitive_events:
         activity_split_candidates = [
             "call to set controller", "call to initialize crowdsourcer", "call to check if initialization happened",
@@ -237,7 +239,7 @@ def transform_events_non_dapp(resources_dir, base_contract, min_block, max_block
 def transform_calls_non_dapp(resources_dir, base_contract, min_block, max_block,
                              mappings, creations, contracts_dapp, txs_reverted):
     logger.info("Transforming CALLS NON-DAPP.")
-    path = os.path.join(resources_dir, f"df_call_non_dapp_{base_contract}_{min_block}_{max_block}.pkl")
+    path = os.path.join(resources_dir, f"df_call_with_ether_transfer_non_dapp_{base_contract}_{min_block}_{max_block}.pkl")
     calls = pickle.load(open(path, "rb"))
     calls = transformation_augur_utils.initial_transformation_calls(calls, False, txs_reverted)
     calls = transformation_augur_utils.rename_attribute(calls, "Activity", "Activity", mappings["calls_map_non_dapp"])
@@ -258,7 +260,7 @@ def transform_delegatecalls_non_dapp(resources_dir, base_contract, min_block, ma
 def transform_zero_value_calls_non_dapp(resources_dir, base_contract, min_block, max_block,
                                         mappings, creations, contracts_dapp, txs_reverted):
     logger.info("Transforming ZERO VALUE CALLS NON-DAPP.")
-    path = os.path.join(resources_dir, f"df_call_non_dapp_zero_value_{base_contract}_{min_block}_{max_block}.pkl")
+    path = os.path.join(resources_dir, f"df_call_with_no_ether_transfer_non_dapp_{base_contract}_{min_block}_{max_block}.pkl")
     zcalls = pickle.load(open(path, "rb"))
     zcalls = transformation_augur_utils.initial_transformation_calls(zcalls, False, txs_reverted)
     zcalls = transformation_augur_utils.rename_attribute(zcalls, "Activity", "Activity", mappings["calls_zero_value_map_non_dapp"])
@@ -442,15 +444,15 @@ def transform_augur_data(RESOURCES_DIR, LOG_FOLDER, CONFIG, base_contract, node_
     '''
     # Toggle each category on or off as needed.
     toggles = {
-        "events_dapp": CONFIG["dapp_decode_events"],
-        "calls_dapp": CONFIG["dapp_decode_calls_with_ether_transfer"],
-        "delegatecalls_dapp": CONFIG["dapp_decode_delegatecalls"],
-        "zero_value_calls_dapp": CONFIG["dapp_decode_calls_with_no_ether_transfer"],
+        "events_dapp": CONFIG["events_dapp"],
+        "calls_dapp": CONFIG["calls_dapp"],
+        "delegatecalls_dapp": CONFIG["delegatecalls_dapp"],
+        "zero_value_calls_dapp": CONFIG["zero_value_calls_dapp"],
         "creations_dapp": True,
-        "events_non_dapp": CONFIG["non_dapp_decode_events"],
-        "calls_non_dapp": CONFIG["non_dapp_decode_calls_with_ether_transfer"],
-        "delegatecalls_non_dapp": CONFIG["non_dapp_decode_delegatecalls"],
-        "zero_value_calls_non_dapp": CONFIG["non_dapp_decode_calls_with_no_ether_transfer"],
+        "events_non_dapp": CONFIG["events_non_dapp"],
+        "calls_non_dapp": CONFIG["calls_non_dapp"],
+        "delegatecalls_non_dapp": CONFIG["delegatecalls_non_dapp"],
+        "zero_value_calls_non_dapp": CONFIG["zero_value_calls_non_dapp"],
         #"zero_value_delegatecalls_non_dapp": CONFIG["zero_value_delegatecalls_non_dapp"],
         "creations_non_dapp": False,
         "sensitive_events": CONFIG["sensitive_events"]  # Set to True to enable sensitive event processing for all DAPP categories
@@ -467,7 +469,7 @@ def transform_augur_data(RESOURCES_DIR, LOG_FOLDER, CONFIG, base_contract, node_
         "calls_non_dapp": False,
         "delegatecalls_non_dapp": False,
         "zero_value_calls_non_dapp": False,
-        "zero_value_delegatecalls_non_dapp": False,
+        "delegatecalls_non_dapp": False,
         "creations_non_dapp": False,
         "sensitive_events": False  # Set to True to enable sensitive event processing for all DAPP categories
     }

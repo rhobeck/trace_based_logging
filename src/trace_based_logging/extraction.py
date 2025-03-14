@@ -14,7 +14,7 @@ def fetch_transactions(config, contracts_lx):
                 contracts_lx, config["min_block"], config["max_block"],
                 internal_flag="normal", etherscan_api_key=config["etherscan_api_key"]
             )
-            transactions = pd.concat([transactions, transactions_normal])
+            transactions = pd.concat([transactions, transactions_normal], ignore_index=True)
         except Exception as e:
             logger.error(f"Error fetching normal transactions: {e}")
     # Internal transactions
@@ -24,7 +24,7 @@ def fetch_transactions(config, contracts_lx):
                 contracts_lx, config["min_block"], config["max_block"],
                 internal_flag="internal", etherscan_api_key=config["etherscan_api_key"]
             )
-            transactions = pd.concat([transactions, transactions_internal])
+            transactions = pd.concat([transactions, transactions_internal], ignore_index=True)
         except Exception as e:
             logger.error(f"Error fetching internal transactions: {e}")
     # Transactions by events
@@ -34,7 +34,7 @@ def fetch_transactions(config, contracts_lx):
             transactions_events = get_transactions.get_transactions_by_events(
                 build_node_url(config), contracts_lx, config["min_block"], config["max_block"]
             )
-            transactions = pd.concat([transactions, transactions_events])
+            transactions = pd.concat([transactions, transactions_events], ignore_index=True)
         except Exception as e:
             logger.error(f"Error fetching transactions by events: {e}")
     # Remove duplicates based on transaction hash
@@ -60,7 +60,7 @@ def process_transactions(config, state):
         if state["trace_tree"] is None:
             state["trace_tree"] = traces
         else:
-            state["trace_tree"] = pd.concat([state["trace_tree"], traces], axis=0)
+            state["trace_tree"] = pd.concat([state["trace_tree"], traces], axis=0, ignore_index=True)
         logger.info("SUCCESS: Traces computed.")
 
         logger.info("Identifying relevant CREATE-relations.")

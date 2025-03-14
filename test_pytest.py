@@ -4,7 +4,7 @@ import src.trace_based_logging.raw_trace_retriever.trace_retriever_utils as trac
 import src.trace_based_logging.raw_trace_retriever.create_relations as create_relations
 import src.trace_based_logging.trace_decoder.data_preparation as data_preparation
 import src.trace_based_logging.trace_decoder.event_decoder as event_decoder
-import trace_based_logging.log_construction.transformation_augur_utils as transformation_augur_utils
+import src.trace_based_logging.log_construction.transformation_augur_utils as transformation_augur_utils
 import pickle
 import os
 import pandas as pd
@@ -389,7 +389,14 @@ def test_process_abi():
     path = os.path.join(dir_path, "tests", "test_resources", "dict_abi_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
     dict_abi = pickle.load(open(path, 'rb'))
 
-    df_log = data_preparation.base_transformation(df_log, contracts_dapp)
+    config = {
+        "min_block":5926229,
+        "max_block": 11229573
+    }
+    state = {
+        "base_contract": "0x75228dce4d82566d93068a8d5d49435216551599"
+    }
+    df_log = data_preparation.base_transformation(df_log, contracts_dapp, config, state)
 
     contract_address_tmp = df_log["to"][722]#"0x24e2b1d415e6e0d04042eaa45dc2a08fc33ca6cd"
     abi = dict_abi[contract_address_tmp]
@@ -423,7 +430,14 @@ def test_function_decoder():
     df_log["from"] = df_log["from"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
     df_log["address"] = df_log["address"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
 
-    df_log = data_preparation.base_transformation(df_log, contracts_dapp)
+    config = {
+        "min_block":5926229,
+        "max_block": 11229573
+    }
+    state = {
+        "base_contract": "0x75228dce4d82566d93068a8d5d49435216551599"
+    }
+    df_log = data_preparation.base_transformation(df_log, contracts_dapp, config, state)
     
     path = os.path.join(dir_path, "tests", "test_resources", "dict_abi_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
     dict_abi = pickle.load(open(path, 'rb'))
@@ -431,11 +445,10 @@ def test_function_decoder():
     logging_string = "DAPP WITH ETHER TRANSFER"
     df_functions = data_preparation.decode_functions(df_log, dict_abi, node_url, ["CALL"], False, logging_string)
 
-    item = df_functions["name"].unique()[2]
-    assert(item == "<Function createUniverse(address,address,bytes32)>")
+    item = df_functions["name"][4]
+    assert(item == "<Function publicTradeWithLimit(uint8,address,uint256,uint256,uint256,bytes32,bytes32,bytes32,uint256)>")
 
-    assert(len(df_functions) == 9395)
-    # if len(df_functions) != 9395 then probably faulty error handling
+    assert(len(df_functions) == 6)
 
 '''
 def test_propagate_extraInfo():

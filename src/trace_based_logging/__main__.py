@@ -1,5 +1,6 @@
 import os
 import sys
+import pandas as pd
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 import pickle
@@ -20,24 +21,31 @@ def main():
     config_path = os.path.join(dir_path, 'config.json')
     
     try:
+        logger.info("STARTING SET-UP PHASE")
         config = load_config(config_path)
         # Use the raw_trace_retriever's utils for string lowering and such.
         from src.trace_based_logging.raw_trace_retriever import trace_retriever_utils
         state = initialize_extraction_state(config, trace_retriever_utils)
         trace_retriever_utils.check_socket(config["host"], config["port"])
-        
-        process_transactions(config, state)
-        insert_transaction_index(config, state, build_node_url)
-        dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-        save_trace_data(config, state, dir_path)
     except Exception as e:
-        logger.error(f"Error in extraction phase: {e}")
+        logger.error(f"Error in set-up phase: {e}")
     
     try:
-        logger.info("Starting decoding phase")
+        logger.info("STARTING EXTRACTION PHASE")
+        #process_transactions(config, state)
+        #insert_transaction_index(config, state, build_node_url)
+        #dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        #save_trace_data(config, state, dir_path)
+    except Exception as e:
+        logger.error(f"Error in extraction phase: {e}")
+        
+    try:
+        logger.info("STARTING DECODING PHASE")
         from src.trace_based_logging.trace_decoder import data_preparation
         # Prepare the log DataFrame from the extracted trace data
-        df_log = data_preparation.base_transformation(state["trace_tree"], state["contracts_dapp"])
+        pkl_path = os.path.join(dir_path, "resources", f"contracts_dapp_{state['base_contract']}_{config['min_block']}_{config['max_block']}.pkl")
+        state["contracts_dapp"] = pd.read_pickle(pkl_path)
+        df_log = data_preparation.base_transformation(state["trace_tree"], state["contracts_dapp"], config, state)
         del state["trace_tree"]
         dict_abi = data_preparation.create_abi_dict(data_preparation.address_selection(df_log), config["etherscan_api_key"])
         dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -46,9 +54,9 @@ def main():
         decode_all(df_log, state, config, dict_abi, build_node_url)
     except Exception as e:
         logger.error(f"Error in decoding phase: {e}")
-
+    
     try:
-        logger.info("Starting transformation phase")
+        logger.info("STARTING TRANSFORMATION PHASE")
         from src.trace_based_logging.log_construction import transformation_augur
         dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
         RESOURCES_DIR = os.path.join(dir_path, "resources")
@@ -58,7 +66,7 @@ def main():
         transformation_augur.transform_augur_data(RESOURCES_DIR, LOG_FOLDER, config, state["base_contract"], build_node_url)
     except Exception as e:
         logger.error(f"Error in transformation phase: {e}")
-                
+                    
     print("DONE")
 
 if __name__ == '__main__':
