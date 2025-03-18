@@ -67,7 +67,6 @@ def base_transformation(df_log, contracts_dapp, config, state):
         
         dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
-        # Construct file paths identical to the save_trace_data function
         base_contract = state["base_contract"]
         csv_path = os.path.join(dir_path, "resources", f"df_trace_tree_{base_contract}_{config['min_block']}_{config['max_block']}.csv")
         pkl_path = os.path.join(dir_path, "resources", f"df_trace_tree_{base_contract}_{config['min_block']}_{config['max_block']}.pkl")

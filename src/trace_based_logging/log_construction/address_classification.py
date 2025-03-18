@@ -231,9 +231,9 @@ def create_address_dict(base_contract, log_folder, dir_path, min_block, max_bloc
     dict_creations_dapp = {}
 
     # Process ZERO VALUE CALLS DAPP if enabled.
-    if toggles.get("zero_value_calls_dapp", False):
+    if toggles.get("dapp_zero_value_calls", False):
         path = os.path.join(dir_path, log_folder,
-                            f'calls_dapp_zero_value_{base_contract}_{min_block}_{max_block}.csv')
+                            f'dapp_zero_value_calls_{base_contract}_{min_block}_{max_block}.csv')
         cols = columns_calls_zero_value_dapp + ["blockNumber"]
         calls_dapp_zero_value = pd.read_csv(path, usecols=cols)
         addresses_calls_zero_dapp = define_addresses(columns_calls_zero_value_dapp, calls_dapp_zero_value)
@@ -243,9 +243,9 @@ def create_address_dict(base_contract, log_folder, dir_path, min_block, max_bloc
         logger.info("Skipping ZERO VALUE CALLS DAPP for address dict.")
 
     # Process EVENTS DAPP if enabled.
-    if toggles.get("events_dapp", False):
+    if toggles.get("dapp_events", False):
         path = os.path.join(dir_path, log_folder,
-                            f'events_dapp_{base_contract}_{min_block}_{max_block}.csv')
+                            f'dapp_events_{base_contract}_{min_block}_{max_block}.csv')
         cols = columns_events + ["blockNumber"]
         events_dapp = pd.read_csv(path, usecols=cols)
         addresses_events_dapp = define_addresses(columns_events, events_dapp)
@@ -255,9 +255,9 @@ def create_address_dict(base_contract, log_folder, dir_path, min_block, max_bloc
         logger.info("Skipping EVENTS DAPP for address dict.")
 
     # Process CALLS DAPP if enabled.
-    if toggles.get("calls_dapp", False):
+    if toggles.get("dapp_calls", False):
         path = os.path.join(dir_path, log_folder,
-                            f'calls_dapp_{base_contract}_{min_block}_{max_block}.csv')
+                            f'dapp_calls_{base_contract}_{min_block}_{max_block}.csv')
         cols = columns_calls_dapp + ["blockNumber"]
         calls_dapp = pd.read_csv(path, usecols=cols)
         addresses_calls_dapp = define_addresses(columns_calls_dapp, calls_dapp)
@@ -267,9 +267,9 @@ def create_address_dict(base_contract, log_folder, dir_path, min_block, max_bloc
         logger.info("Skipping CALLS DAPP for address dict.")
 
     # Process DELEGATECALLS DAPP if enabled.
-    if toggles.get("delegatecalls_dapp", False):
+    if toggles.get("dapp_delegatecalls", False):
         path = os.path.join(dir_path, log_folder,
-                            f'delegatecalls_dapp_{base_contract}_{min_block}_{max_block}.csv')
+                            f'dapp_delegatecalls_{base_contract}_{min_block}_{max_block}.csv')
         cols = columns_delegatecalls_dapp + ["blockNumber"]
         delegatecalls_dapp = pd.read_csv(path, usecols=cols)
         addresses_delegatecalls_dapp = define_addresses(columns_delegatecalls_dapp, delegatecalls_dapp)
@@ -279,9 +279,9 @@ def create_address_dict(base_contract, log_folder, dir_path, min_block, max_bloc
         logger.info("Skipping DELEGATECALLS DAPP for address dict.")
 
     # Process CREATIONS DAPP if enabled.
-    if toggles.get("creations_dapp", False):
+    if toggles.get("dapp_creations", False):
         path = os.path.join(dir_path, log_folder,
-                            f'creations_dapp_{base_contract}_{min_block}_{max_block}.csv')
+                            f'dapp_creations_{base_contract}_{min_block}_{max_block}.csv')
         cols = columns_creations_dapp + ["blockNumber"]
         creations_dapp = pd.read_csv(path, usecols=cols)
         addresses_creations_dapp = define_addresses(columns_creations_dapp, creations_dapp)
@@ -295,15 +295,15 @@ def create_address_dict(base_contract, log_folder, dir_path, min_block, max_bloc
 
     # Combine the min block numbers from all enabled categories.
     dict_list = []
-    if toggles.get("zero_value_calls_dapp", False):
+    if toggles.get("dapp_zero_value_calls", False):
         dict_list.append(dict_calls_zero_dapp)
-    if toggles.get("events_dapp", False):
+    if toggles.get("dapp_events", False):
         dict_list.append(dict_events_dapp)
-    if toggles.get("calls_dapp", False):
+    if toggles.get("dapp_calls", False):
         dict_list.append(dict_calls_dapp)
-    if toggles.get("delegatecalls_dapp", False):
+    if toggles.get("dapp_delegatecalls", False):
         dict_list.append(dict_delegatecalls_dapp)
-    if toggles.get("creations_dapp", False):
+    if toggles.get("dapp_creations", False):
         dict_list.append(dict_creations_dapp)
 
     addresses_w_min_block_numbers = combine_min_block_numbers(dict_list)

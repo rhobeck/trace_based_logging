@@ -65,7 +65,7 @@ def process_transactions(config, state):
 
         logger.info("Identifying relevant CREATE-relations.")
         state["contracts_dapp"], state["contracts_lx"] = create_relations.create_relations(
-            state["trace_tree"], state["contracts_dapp"], state["contracts_lx"], state["non_dapp_contracts"]
+            state["trace_tree"], state["contracts_dapp"], state["contracts_lx"], state["contracts_non_dapp"]
         )
         logger.info(f"New contracts at level {level}: {len(state['contracts_lx'])}")
         level += 1

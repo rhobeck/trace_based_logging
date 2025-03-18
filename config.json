@@ -1,28 +1,46 @@
 {
-    "port": 8081,
-    "protocol": "http://",
-    "host": "127.0.0.1",
-    "list_contracts": [
-        "0x75228dce4d82566d93068a8d5d49435216551599", 
-        "0x57f1c2953630056aaadb9bfbda05369e6af7872b"
-    ],
-    "list_predefined_non_dapp_contracts": [
-        "0x0000000000000000000000000000000000000000"
-    ],
-    "min_block": 5926229,
-    "max_block": 5930573,
-    "extract_normal_transactions": true,
-    "extract_internal_transactions": true,
-    "extract_transactions_by_events": true,
-    "etherscan_api_key": "ETHERSCAN_API_KEY",
-    "events_dapp": true,
-    "calls_dapp": true,
-    "delegatecalls_dapp": true,
-    "zero_value_calls_dapp": true, 
-    "events_non_dapp": true,
-    "calls_non_dapp": true,
-    "zero_value_calls_non_dapp": true, 
-    "delegatecalls_non_dapp": true,
-    "sensitive_events": false,
-    "log_folder": "log_120325"
+    "ethereum_node": {
+        "port": 8081,
+        "protocol": "http://",
+        "host": "127.0.0.1"
+    },
+
+    "contracts": {
+        "dapp": ["0x75228dce4d82566d93068a8d5d49435216551599", "0x57f1c2953630056aaadb9bfbda05369e6af7872b"],
+        "non_dapp": ["0x0000000000000000000000000000000000000000"]
+    },
+
+    "block_range": {
+        "min_block": 5926229,
+        "max_block": 5930573
+    },
+
+    "extraction": {
+        "normal_transactions": true,
+        "internal_transactions": true,
+        "transactions_by_events": true,
+        "etherscan_api_key": "ETHERSCAN_API_KEY"
+    },
+    
+    "output": {
+        "dapp": {
+            "events": true,
+            "calls": true,
+            "delegatecalls": true,
+            "zero_value_calls": true,
+            "creations":true
+        },
+        "non_dapp": {
+            "events": true,
+            "calls": true,
+            "delegatecalls": true,
+            "zero_value_calls": true,
+            "creations": true
+        }
+    },
+
+    "misc": {
+        "sensitive_events": false,
+        "log_folder": "log_120325"
+    }
 }

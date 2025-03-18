@@ -5,6 +5,8 @@ import src.trace_based_logging.raw_trace_retriever.create_relations as create_re
 import src.trace_based_logging.trace_decoder.data_preparation as data_preparation
 import src.trace_based_logging.trace_decoder.event_decoder as event_decoder
 import src.trace_based_logging.log_construction.transformation_augur_utils as transformation_augur_utils
+import src.trace_based_logging.config as config
+
 import pickle
 import os
 import pandas as pd
@@ -20,8 +22,12 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 #     port_message = functions_helpers.check_socket("127.0.0.1", port)
 #     assert(port_message == "Port is open")
 
-with open('config.json', 'r') as file:
-        config = json.load(file)
+dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+config_path = os.path.join(dir_path, 'config.json')
+config = config.load_config(config_path)
+
+#with open('config.json', 'r') as file:
+#        config = json.load(file)
     
 etherscan_api_key = config["etherscan_api_key"]
 
@@ -247,7 +253,7 @@ def test_insert_eventPos():
 def test_remove_predefined_contracts():
     set_contracts_lx = ["0x123...", "0x456...", "0x0000000000000000000000000000000000000000", "0x789..."]
     set_predefined_non_dapp_contracts = ["0x0000000000000000000000000000000000000000", "0xabc...", "0xdef..."]
-    filtered_set = create_relations.remove_predefined_contracts(set_contracts_lx, set_predefined_non_dapp_contracts)
+    filtered_set = create_relations.remove_contracts_non_dapp(set_contracts_lx, set_predefined_non_dapp_contracts)
     assert filtered_set == {'0x123...', '0x789...', '0x456...'}
 
  

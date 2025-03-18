@@ -25,7 +25,7 @@ def load_mappings(mapping_path):
 
 def load_resources(base_contract, min_block, max_block, resources_dir):
     logger.info("Loading resources.")
-    creations_path = os.path.join(resources_dir, f'df_creations_{base_contract}_{min_block}_{max_block}.pkl')
+    creations_path = os.path.join(resources_dir, f'creations_{base_contract}_{min_block}_{max_block}.pkl')
     contracts_dapp_path = os.path.join(resources_dir, f'contracts_dapp_{base_contract}_{min_block}_{max_block}.pkl')
     creations = pickle.load(open(creations_path, "rb"))
     contracts_dapp = pickle.load(open(contracts_dapp_path, "rb"))
@@ -63,14 +63,40 @@ def get_reverted_transactions(resources_dir, base_contract, min_block, max_block
         return set()
 
 
+def load_if_not_found_in_state(resources_dir, file_name_snipped, state, CONFIG):
+    
+    base_contract = state["base_contract"]
+    csv_path = os.path.join(resources_dir, f"{file_name_snipped}_{base_contract}_{CONFIG['min_block']}_{CONFIG['max_block']}.csv")
+    pkl_path = os.path.join(resources_dir, f"{file_name_snipped}_{base_contract}_{CONFIG['min_block']}_{CONFIG['max_block']}.pkl")
+
+    # Try to load the DataFrame
+    if os.path.exists(pkl_path):
+        data = pd.read_pickle(pkl_path)
+        logger.info("Loaded DataFrame from pickle file.")
+    elif os.path.exists(csv_path):
+        data = pd.read_csv(csv_path)
+        logger.info("Loaded DataFrame from CSV file.")
+    else:
+        logger.error(f"Neither the pickle file nor the CSV file exists for {file_name_snipped}.")
+    return data
+
+
+
 ############################### ---- DAPP CATEGORIES ---- ###############################
 
-def transform_events_dapp(resources_dir, base_contract, min_block, max_block,
+def transform_events_dapp(state, resources_dir, CONFIG,
                           mappings, creations, contracts_dapp, txs_reverted,
                           sensitive_events=False):
     logger.info("Transforming EVENTS DAPP.")
-    path = os.path.join(resources_dir, f'df_events_dapp_{base_contract}_{min_block}_{max_block}.pkl')
-    events = pickle.load(open(path, "rb"))
+
+    file_name_snipped = "dapp_events_decoded"
+
+    if file_name_snipped in state:
+        events = state[file_name_snipped]
+    if file_name_snipped not in state or not isinstance(state[file_name_snipped], pd.DataFrame):
+        logger.info("The function input df_log must be a pandas DataFrame. Trying to load the DataFrame from a pickle or CSV file.")
+        events = load_if_not_found_in_state(resources_dir, file_name_snipped, state, CONFIG)
+        
     events = transformation_augur_utils.initial_transformation_events(events, True, txs_reverted)
     events = transformation_augur_utils.rename_attribute(events, "Activity", "Activity", mappings["event_map_dapp"])
     events = transformation_augur_utils.label_contracts(events, mappings, creations, contracts_dapp)
@@ -89,13 +115,19 @@ def transform_events_dapp(resources_dir, base_contract, min_block, max_block,
     logger.info(f"Number of EVENTS DAPP: {len(events)}")
     return events
 
-def transform_calls_dapp(resources_dir, base_contract, min_block, max_block,
+def transform_calls_dapp(state, resources_dir, CONFIG,
                          mappings, creations, contracts_dapp, txs_reverted,
                          sensitive_events, market_info=None, market_type_info=None):
     logger.info("Transforming CALLS DAPP.")
     
-    path = os.path.join(resources_dir, f"df_call_dapp_with_ether_transfer_{base_contract}_{min_block}_{max_block}.pkl")
-    calls = pickle.load(open(path, "rb"))
+    file_name_snipped = "dapp_calls_decoded"
+
+    if file_name_snipped in state:
+        calls = state[file_name_snipped]
+    if file_name_snipped not in state or not isinstance(state[file_name_snipped], pd.DataFrame):
+        logger.info("The function input df_log must be a pandas DataFrame. Trying to load the DataFrame from a pickle or CSV file.")
+        calls = load_if_not_found_in_state(resources_dir, file_name_snipped, state, CONFIG)
+
     calls = transformation_augur_utils.initial_transformation_calls(calls, True, txs_reverted)
     calls = transformation_augur_utils.rename_attribute(calls, "Activity", "Activity", mappings["calls_map_dapp"])
     calls = transformation_augur_utils.label_contracts(calls, mappings, creations, contracts_dapp)
@@ -103,9 +135,6 @@ def transform_calls_dapp(resources_dir, base_contract, min_block, max_block,
     for col in ["orderId", "betterOrderId", "worseOrderId", "tradeGroupId"]:
         if col in calls.columns:
             calls[col] = calls[col].apply(lambda x: "0x" + x.hex() if pd.notnull(x) and isinstance(x, bytes) else str(x) if pd.notnull(x) else pd.NA)
-    
-    #for col in ["orderId", "betterOrderId", "worseOrderId", "tradeGroupId"]:
-    #    calls[col] = calls[col].apply(lambda x: "0x" + x.hex() if pd.notnull(x) else pd.NA)
     
     if sensitive_events:
         activity_split_candidates = ["call and transfer Ether", "call trade with limit"]
@@ -118,12 +147,19 @@ def transform_calls_dapp(resources_dir, base_contract, min_block, max_block,
     logger.info(f"Number of CALLS DAPP: {len(calls)}")
     return calls
 
-def transform_delegatecalls_dapp(resources_dir, base_contract, min_block, max_block,
+def transform_delegatecalls_dapp(state, resources_dir, CONFIG,
                                  mappings, creations, contracts_dapp, txs_reverted,
                                  sensitive_events, market_info=None, market_type_info=None):
     logger.info("Transforming DELEGATECALLS DAPP.")
-    path = os.path.join(resources_dir, f"df_delegatecall_dapp_{base_contract}_{min_block}_{max_block}.pkl")
-    dcalls = pickle.load(open(path, "rb"))
+    
+    file_name_snipped = "dapp_delegatecalls_decoded"
+
+    if file_name_snipped in state:
+        dcalls = state[file_name_snipped]
+    if file_name_snipped not in state or not isinstance(state[file_name_snipped], pd.DataFrame):
+        logger.info(f"The function input {file_name_snipped} must be a pandas DataFrame. Trying to load the DataFrame from a pickle or CSV file.")
+        dcalls = load_if_not_found_in_state(resources_dir, file_name_snipped, state, CONFIG)
+        
     dcalls = transformation_augur_utils.initial_transformation_calls(dcalls, True, txs_reverted)
     dcalls = transformation_augur_utils.rename_attribute(dcalls, "Activity", "Activity", mappings["delegatecalls_map_dapp"])
     dcalls = transformation_augur_utils.label_contracts(dcalls, mappings, creations, contracts_dapp)
@@ -151,12 +187,20 @@ def transform_delegatecalls_dapp(resources_dir, base_contract, min_block, max_bl
     logger.info(f"Number of DELEGATECALLS DAPP: {len(dcalls)}")
     return dcalls
 
-def transform_zero_value_calls_dapp(resources_dir, base_contract, min_block, max_block,
+def transform_zero_value_calls_dapp(state, resources_dir, CONFIG,
                                     mappings, creations, contracts_dapp, txs_reverted,
                                     sensitive_events, market_info=None, market_type_info=None):
+    
     logger.info("Transforming ZERO VALUE CALLS DAPP.")
-    path = os.path.join(resources_dir, f"df_call_dapp_with_no_ether_transfer_{base_contract}_{min_block}_{max_block}.pkl")
-    zcalls = pickle.load(open(path, "rb"))
+    
+    file_name_snipped = "dapp_zero_value_calls_decoded"    
+    
+    if file_name_snipped in state:
+        zcalls = state[file_name_snipped]
+    if file_name_snipped not in state or not isinstance(state[file_name_snipped], pd.DataFrame):
+        logger.info(f"The function input {file_name_snipped} must be a pandas DataFrame. Trying to load the DataFrame from a pickle or CSV file.")
+        zcalls = load_if_not_found_in_state(resources_dir, file_name_snipped, state, CONFIG)
+        
     zcalls.reset_index(drop=True, inplace=True)
     zcalls = transformation_augur_utils.initial_transformation_calls(zcalls, True, txs_reverted)
     zcalls = transformation_augur_utils.rename_attribute(zcalls, "Activity", "Activity", mappings["calls_zero_value_map_dapp"])
@@ -225,43 +269,71 @@ def transform_creations_dapp(creations, contracts_dapp):
 
 ############################### ---- NON-DAPP CATEGORIES ---- ###############################
 
-def transform_events_non_dapp(resources_dir, base_contract, min_block, max_block,
-                              mappings, creations, contracts_dapp, txs_reverted):
+def transform_events_non_dapp(state, resources_dir, CONFIG,
+                              mappings, txs_reverted):
     logger.info("Transforming EVENTS NON-DAPP.")
-    path = os.path.join(resources_dir, f'df_events_non_dapp_{base_contract}_{min_block}_{max_block}.pkl')
-    events = pickle.load(open(path, "rb"))
+    
+    file_name_snipped = "non_dapp_events_decoded"    
+    
+    if file_name_snipped in state:
+        events = state[file_name_snipped]
+    if file_name_snipped not in state or not isinstance(state[file_name_snipped], pd.DataFrame):
+        logger.info(f"The function input {file_name_snipped} must be a pandas DataFrame. Trying to load the DataFrame from a pickle or CSV file.")
+        events = load_if_not_found_in_state(resources_dir, file_name_snipped, state, CONFIG)
+    
     events = transformation_augur_utils.initial_transformation_events(events, False, txs_reverted)
     events = transformation_augur_utils.rename_attribute(events, "Activity", "Activity", mappings["event_map_non_dapp"])
     # Additional non-dapp processing could be applied here
     logger.info(f"Number of EVENTS NON-DAPP: {len(events)}")
     return events
 
-def transform_calls_non_dapp(resources_dir, base_contract, min_block, max_block,
-                             mappings, creations, contracts_dapp, txs_reverted):
+def transform_calls_non_dapp(state, resources_dir, CONFIG,
+                             mappings, txs_reverted):
     logger.info("Transforming CALLS NON-DAPP.")
-    path = os.path.join(resources_dir, f"df_call_with_ether_transfer_non_dapp_{base_contract}_{min_block}_{max_block}.pkl")
-    calls = pickle.load(open(path, "rb"))
+    
+    file_name_snipped = "non_dapp_calls_decoded"    
+    
+    if file_name_snipped in state:
+        calls = state[file_name_snipped]
+    if file_name_snipped not in state or not isinstance(state[file_name_snipped], pd.DataFrame):
+        logger.info(f"The function input {file_name_snipped} must be a pandas DataFrame. Trying to load the DataFrame from a pickle or CSV file.")
+        calls = load_if_not_found_in_state(resources_dir, file_name_snipped, state, CONFIG)
+    
     calls = transformation_augur_utils.initial_transformation_calls(calls, False, txs_reverted)
     calls = transformation_augur_utils.rename_attribute(calls, "Activity", "Activity", mappings["calls_map_non_dapp"])
     # Additional processing if needed
     logger.info(f"Number of CALLS NON-DAPP: {len(calls)}")
     return calls
 
-def transform_delegatecalls_non_dapp(resources_dir, base_contract, min_block, max_block,
-                                     mappings, creations, contracts_dapp, txs_reverted):
+def transform_delegatecalls_non_dapp(state, resources_dir, CONFIG,
+                                     mappings, txs_reverted):
     logger.info("Transforming DELEGATECALLS NON-DAPP.")
-    path = os.path.join(resources_dir, f"df_delegatecall_non_dapp_{base_contract}_{min_block}_{max_block}.pkl")
-    dcalls = pickle.load(open(path, "rb"))
+    
+    file_name_snipped = "non_dapp_delegatecalls_decoded"    
+    
+    if file_name_snipped in state:
+        dcalls = state[file_name_snipped]
+    if file_name_snipped not in state or not isinstance(state[file_name_snipped], pd.DataFrame):
+        logger.info(f"The function input {file_name_snipped} must be a pandas DataFrame. Trying to load the DataFrame from a pickle or CSV file.")
+        dcalls = load_if_not_found_in_state(resources_dir, file_name_snipped, state, CONFIG)
+        
     dcalls = transformation_augur_utils.initial_transformation_calls(dcalls, False, txs_reverted)
     dcalls = transformation_augur_utils.rename_attribute(dcalls, "Activity", "Activity", mappings["delegatecalls_map_non_dapp"])
     logger.info(f"Number of DELEGATECALLS NON-DAPP: {len(dcalls)}")
     return dcalls
 
-def transform_zero_value_calls_non_dapp(resources_dir, base_contract, min_block, max_block,
-                                        mappings, creations, contracts_dapp, txs_reverted):
+def transform_zero_value_calls_non_dapp(state, resources_dir, CONFIG,
+                                        mappings, txs_reverted):
     logger.info("Transforming ZERO VALUE CALLS NON-DAPP.")
-    path = os.path.join(resources_dir, f"df_call_with_no_ether_transfer_non_dapp_{base_contract}_{min_block}_{max_block}.pkl")
-    zcalls = pickle.load(open(path, "rb"))
+    
+    file_name_snipped = "non_dapp_zero_value_calls_decoded"    
+    
+    if file_name_snipped in state:
+        zcalls = state[file_name_snipped]
+    if file_name_snipped not in state or not isinstance(state[file_name_snipped], pd.DataFrame):
+        logger.info(f"The function input {file_name_snipped} must be a pandas DataFrame. Trying to load the DataFrame from a pickle or CSV file.")
+        zcalls = load_if_not_found_in_state(resources_dir, file_name_snipped, state, CONFIG)
+        
     zcalls = transformation_augur_utils.initial_transformation_calls(zcalls, False, txs_reverted)
     zcalls = transformation_augur_utils.rename_attribute(zcalls, "Activity", "Activity", mappings["calls_zero_value_map_non_dapp"])
     if "functionName" in zcalls.columns:
@@ -299,16 +371,22 @@ def save_transformed_category(df, category_name, base_contract, min_block, max_b
         pickle.dump(df, f)
     logger.info(f"Saved {category_name} to {csv_path} and {pkl_path}")
 
-def transform_data(resources_dir, log_folder, base_contract, min_block, max_block, toggles):
+def transform_augur_data(resources_dir, log_folder, state, CONFIG):
     """
-    toggles is a dictionary that controls whether to process each category.
+    CONFIG is a dictionary that controls whether to process each category.
     Expected keys:
       - events_dapp, calls_dapp, delegatecalls_dapp, zero_value_calls_dapp, creations_dapp,
       - events_non_dapp, calls_non_dapp, delegatecalls_non_dapp, zero_value_calls_non_dapp,
       - zero_value_delegatecalls_non_dapp, creations_non_dapp,
       - sensitive_events (applies to all sensitive processing)
     """
-    logger.info("Log construction started.")
+    logger.info("Data transformation to prepare the event log started.")    
+    
+    min_block = CONFIG["min_block"]
+    max_block = CONFIG["max_block"]
+    
+    base_contract = state["base_contract"]
+    
     mapping_path = os.path.join(os.path.dirname(__file__), "mappings.json")
     mappings = load_mappings(mapping_path)
     creations, contracts_dapp = load_resources(base_contract, min_block, max_block, resources_dir)
@@ -320,164 +398,108 @@ def transform_data(resources_dir, log_folder, base_contract, min_block, max_bloc
     ############################### ---- DAPP ---- ###############################
     
     # Process EVENTS DAPP
-    if toggles.get("events_dapp", False):
-        events_dapp = transform_events_dapp(resources_dir, base_contract, min_block, max_block,
+    if CONFIG.get("dapp_events", False):
+        events_dapp = transform_events_dapp(state, resources_dir, CONFIG,
                                              mappings, creations, contracts_dapp, txs_reverted,
-                                             sensitive_events=toggles.get("sensitive_events", False))
-        save_transformed_category(events_dapp, "events_dapp", base_contract, min_block, max_block, resources_dir, log_folder)
-        if toggles.get("sensitive_events", False):
+                                             sensitive_events=CONFIG.get("sensitive_events", False))
+        save_transformed_category(events_dapp, "dapp_events", base_contract, min_block, max_block, resources_dir, log_folder)
+        if CONFIG.get("sensitive_events", False):
             market_info = transformation_augur_utils.propagate_extraInfo(events_dapp)
             market_type_info = transformation_augur_utils.propagate_marketType(events_dapp)
     else:
         logger.info("Skipping EVENTS DAPP.")
     
     # Process CALLS DAPP
-    if toggles.get("calls_dapp", False):
-        calls_dapp = transform_calls_dapp(resources_dir, base_contract, min_block, max_block,
+    if CONFIG.get("dapp_calls", False):
+        calls_dapp = transform_calls_dapp(state, resources_dir, CONFIG,
                                           mappings, creations, contracts_dapp, txs_reverted,
-                                          sensitive_events=toggles.get("sensitive_events", False),
+                                          sensitive_events=CONFIG.get("sensitive_events", False),
                                           market_info=market_info, market_type_info=market_type_info)
-        save_transformed_category(calls_dapp, "calls_dapp", base_contract, min_block, max_block, resources_dir, log_folder)
+        save_transformed_category(calls_dapp, "dapp_calls", base_contract, min_block, max_block, resources_dir, log_folder)
     else:
         logger.info("Skipping CALLS DAPP.")
     
     # Process DELEGATECALLS DAPP
-    if toggles.get("delegatecalls_dapp", False):
-        dcalls_dapp = transform_delegatecalls_dapp(resources_dir, base_contract, min_block, max_block,
+    if CONFIG.get("dapp_delegatecalls", False):
+        dcalls_dapp = transform_delegatecalls_dapp(state, resources_dir, CONFIG,
                                                     mappings, creations, contracts_dapp, txs_reverted,
-                                                    sensitive_events=toggles.get("sensitive_events", False),
+                                                    sensitive_events=CONFIG.get("sensitive_events", False),
                                                     market_info=market_info, market_type_info=market_type_info)
-        save_transformed_category(dcalls_dapp, "delegatecalls_dapp", base_contract, min_block, max_block, resources_dir, log_folder)
+        save_transformed_category(dcalls_dapp, "dapp_delegatecalls", base_contract, min_block, max_block, resources_dir, log_folder)
     else:
         logger.info("Skipping DELEGATECALLS DAPP.")
     
     # Process ZERO VALUE CALLS DAPP
-    if toggles.get("zero_value_calls_dapp", False):
-        zcalls_dapp = transform_zero_value_calls_dapp(resources_dir, base_contract, min_block, max_block,
+    if CONFIG.get("dapp_zero_value_calls", False):
+        zcalls_dapp = transform_zero_value_calls_dapp(state, resources_dir, CONFIG,
                                                        mappings, creations, contracts_dapp, txs_reverted,
-                                                       sensitive_events=toggles.get("sensitive_events", False),
+                                                       sensitive_events=CONFIG.get("sensitive_events", False),
                                                        market_info=market_info, market_type_info=market_type_info)
-        save_transformed_category(zcalls_dapp, "calls_dapp_zero_value", base_contract, min_block, max_block, resources_dir, log_folder)
+        save_transformed_category(zcalls_dapp, "dapp_zero_value_calls", base_contract, min_block, max_block, resources_dir, log_folder)
     else:
         logger.info("Skipping ZERO VALUE CALLS DAPP.")
     
     # Process CREATIONS DAPP
-    if toggles.get("creations_dapp", False):
+    if CONFIG.get("dapp_creations", False):
         creations_dapp = transform_creations_dapp(creations, contracts_dapp)
-        save_transformed_category(creations_dapp, "creations_dapp", base_contract, min_block, max_block, resources_dir, log_folder)
+        save_transformed_category(creations_dapp, "dapp_creations", base_contract, min_block, max_block, resources_dir, log_folder)
     else:
         logger.info("Skipping CREATIONS DAPP.")
     
     ############################### ---- NON-DAPP ---- ###############################
     
-    if toggles.get("events_non_dapp", False):
-        events_non_dapp = transform_events_non_dapp(resources_dir, base_contract, min_block, max_block,
-                                                     mappings, creations, contracts_dapp, txs_reverted)
-        save_transformed_category(events_non_dapp, "events_non_dapp", base_contract, min_block, max_block, resources_dir, log_folder)
+    if CONFIG.get("non_dapp_events", False):
+        events_non_dapp = transform_events_non_dapp(state, resources_dir, CONFIG,
+                                                     mappings, txs_reverted)
+        save_transformed_category(events_non_dapp, "non_dapp_events", base_contract, min_block, max_block, resources_dir, log_folder)
     else:
         logger.info("Skipping EVENTS NON-DAPP.")
     
-    if toggles.get("calls_non_dapp", False):
-        calls_non_dapp = transform_calls_non_dapp(resources_dir, base_contract, min_block, max_block,
-                                                   mappings, creations, contracts_dapp, txs_reverted)
-        save_transformed_category(calls_non_dapp, "calls_non_dapp", base_contract, min_block, max_block, resources_dir, log_folder)
+    if CONFIG.get("non_dapp_calls", False):
+        calls_non_dapp = transform_calls_non_dapp(state, resources_dir, CONFIG,
+                                                   mappings, txs_reverted)
+        save_transformed_category(calls_non_dapp, "non_dapp_calls", base_contract, min_block, max_block, resources_dir, log_folder)
     else:
         logger.info("Skipping CALLS NON-DAPP.")
     
-    if toggles.get("delegatecalls_non_dapp", False):
-        dcalls_non_dapp = transform_delegatecalls_non_dapp(resources_dir, base_contract, min_block, max_block,
-                                                           mappings, creations, contracts_dapp, txs_reverted)
-        save_transformed_category(dcalls_non_dapp, "delegatecalls_non_dapp", base_contract, min_block, max_block, resources_dir, log_folder)
+    if CONFIG.get("non_dapp_delegatecalls", False):
+        dcalls_non_dapp = transform_delegatecalls_non_dapp(state, resources_dir, CONFIG,
+                                                           mappings, txs_reverted)
+        save_transformed_category(dcalls_non_dapp, "non_dapp_delegatecalls", base_contract, min_block, max_block, resources_dir, log_folder)
     else:
         logger.info("Skipping DELEGATECALLS NON-DAPP.")
     
-    if toggles.get("zero_value_calls_non_dapp", False):
-        zcalls_non_dapp = transform_zero_value_calls_non_dapp(resources_dir, base_contract, min_block, max_block,
-                                                               mappings, creations, contracts_dapp, txs_reverted)
-        save_transformed_category(zcalls_non_dapp, "calls_non_dapp_zero_value", base_contract, min_block, max_block, resources_dir, log_folder)
+    if CONFIG.get("non_dapp_zero_value_calls", False):
+        zcalls_non_dapp = transform_zero_value_calls_non_dapp(state, resources_dir, CONFIG,
+                                                               mappings, txs_reverted)
+        save_transformed_category(zcalls_non_dapp, "non_dapp_zero_value_calls", base_contract, min_block, max_block, resources_dir, log_folder)
     else:
         logger.info("Skipping ZERO VALUE CALLS NON-DAPP.")
     
-#    if toggles.get("zero_value_delegatecalls_non_dapp", False):
+#    if CONFIG.get("non_dapp_zero_value_delegatecalls", False):
 #        zdcalls_non_dapp = transform_zero_value_delegatecalls_non_dapp(resources_dir, base_contract, min_block, max_block,
 #                                                                       mappings, creations, contracts_dapp, txs_reverted)
-#        save_transformed_category(zdcalls_non_dapp, "delegatecalls_non_dapp_zero_value", base_contract, min_block, max_block, resources_dir, log_folder)
+#        save_transformed_category(zdcalls_non_dapp, "non_dapp__zero_value_delegatecalls", base_contract, min_block, max_block, resources_dir, log_folder)
 #    else:
 #        logger.info("Skipping ZERO VALUE DELEGATECALLS NON-DAPP.")
     
-    if toggles.get("creations_non_dapp", False):
+    if CONFIG.get("non_dapp_creations", False):
         creations_non_dapp = transform_creations_non_dapp(creations, contracts_dapp)
-        save_transformed_category(creations_non_dapp, "creations_non_dapp", base_contract, min_block, max_block, resources_dir, log_folder)
+        save_transformed_category(creations_non_dapp, "non_dapp_creations", base_contract, min_block, max_block, resources_dir, log_folder)
     else:
         logger.info("Skipping CREATIONS NON-DAPP.")
     
-    logger.info("Log construction complete.")
+    logger.info("Data transformation to prepare the event log complete.")
     
-def build_address_dict(resources_dir, log_folder, base_contract, min_block, max_block, node_url, toggles):
+def build_address_dict(resources_dir, log_folder, base_contract, min_block, max_block, node_url, CONFIG):
     logger.info("Building address dictionary.")        
     mapping_path = os.path.join(os.path.dirname(__file__), "mappings.json")
     mappings = load_mappings(mapping_path)
     creations, contracts_dapp = load_resources(base_contract, min_block, max_block, resources_dir)
     
-    address_dict = address_classification.create_address_dict(base_contract, log_folder, resources_dir, min_block, max_block, contracts_dapp, node_url, creations, mappings, toggles)
+    address_dict = address_classification.create_address_dict(base_contract, log_folder, resources_dir, min_block, max_block, contracts_dapp, node_url, creations, mappings, CONFIG)
     path = os.path.join(resources_dir, log_folder, "address_dict_" + str(min_block) + "_" + str(max_block) + ".pkl")
     pickle.dump(address_dict, open(path, 'wb'))
     
     logger.info("Building address dictionary complete.")
 
-def build_log():
-    logger.info("Building log.")
-    # Add any additional processing here
-    logger.info("Building log complete.")
-
-def transform_augur_data(RESOURCES_DIR, LOG_FOLDER, CONFIG, base_contract, node_url):
-    #if __name__ == '__main__':
-    '''
-    RESOURCES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'resources'))
-    LOG_FOLDER = "log_120325"
-    CONFIG = {
-        "base_contract": "0x75228dce4d82566d93068a8d5d49435216551599",
-        "min_block": 5926229,
-        "max_block": 11229577,
-        "node_url": "http://localhost:8081"
-    }
-    '''
-    # Toggle each category on or off as needed.
-    toggles = {
-        "events_dapp": CONFIG["events_dapp"],
-        "calls_dapp": CONFIG["calls_dapp"],
-        "delegatecalls_dapp": CONFIG["delegatecalls_dapp"],
-        "zero_value_calls_dapp": CONFIG["zero_value_calls_dapp"],
-        "creations_dapp": True,
-        "events_non_dapp": CONFIG["events_non_dapp"],
-        "calls_non_dapp": CONFIG["calls_non_dapp"],
-        "delegatecalls_non_dapp": CONFIG["delegatecalls_non_dapp"],
-        "zero_value_calls_non_dapp": CONFIG["zero_value_calls_non_dapp"],
-        #"zero_value_delegatecalls_non_dapp": CONFIG["zero_value_delegatecalls_non_dapp"],
-        "creations_non_dapp": False,
-        "sensitive_events": CONFIG["sensitive_events"]  # Set to True to enable sensitive event processing for all DAPP categories
-    }
-
-    '''    
-    toggles = {
-        "events_dapp": True,
-        "calls_dapp": True,
-        "delegatecalls_dapp": True,
-        "zero_value_calls_dapp": False,
-        "creations_dapp": True,
-        "events_non_dapp": False,
-        "calls_non_dapp": False,
-        "delegatecalls_non_dapp": False,
-        "zero_value_calls_non_dapp": False,
-        "delegatecalls_non_dapp": False,
-        "creations_non_dapp": False,
-        "sensitive_events": False  # Set to True to enable sensitive event processing for all DAPP categories
-    }
-    '''   
-    transform_data(RESOURCES_DIR, LOG_FOLDER, base_contract, CONFIG["min_block"], CONFIG["max_block"], toggles)
-    
-    # build_address_dict currently only works for big block ranges
-    #build_address_dict(RESOURCES_DIR, LOG_FOLDER, base_contract, CONFIG["min_block"], CONFIG["max_block"], node_url, toggles)
-    build_log()
-    
-    logger.info("Done.")
