@@ -402,7 +402,7 @@ def test_process_abi():
     state = {
         "base_contract": "0x75228dce4d82566d93068a8d5d49435216551599"
     }
-    df_log = data_preparation.base_transformation(df_log, contracts_dapp, config, state)
+    df_log = data_preparation.base_transformation(df_log, contracts_dapp)
 
     contract_address_tmp = df_log["to"][722]#"0x24e2b1d415e6e0d04042eaa45dc2a08fc33ca6cd"
     abi = dict_abi[contract_address_tmp]
@@ -443,7 +443,7 @@ def test_function_decoder():
     state = {
         "base_contract": "0x75228dce4d82566d93068a8d5d49435216551599"
     }
-    df_log = data_preparation.base_transformation(df_log, contracts_dapp, config, state)
+    df_log = data_preparation.base_transformation(df_log, contracts_dapp)
     
     path = os.path.join(dir_path, "tests", "test_resources", "dict_abi_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
     dict_abi = pickle.load(open(path, 'rb'))

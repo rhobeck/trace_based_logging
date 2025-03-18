@@ -72,10 +72,10 @@ def load_if_not_found_in_state(resources_dir, file_name_snipped, state, CONFIG):
     # Try to load the DataFrame
     if os.path.exists(pkl_path):
         data = pd.read_pickle(pkl_path)
-        logger.info("Loaded DataFrame from pickle file.")
+        logger.info(f"Loaded {file_name_snipped} from pickle file.")
     elif os.path.exists(csv_path):
         data = pd.read_csv(csv_path)
-        logger.info("Loaded DataFrame from CSV file.")
+        logger.info(f"Loaded {file_name_snipped} from CSV file.")
     else:
         logger.error(f"Neither the pickle file nor the CSV file exists for {file_name_snipped}.")
     return data

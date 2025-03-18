@@ -39,6 +39,12 @@
         }
     },
 
+    "stages": {
+        "extraction": true,
+        "decoding": true,
+        "transformation": true
+    },
+
     "misc": {
         "sensitive_events": false,
         "log_folder": "log_120325"

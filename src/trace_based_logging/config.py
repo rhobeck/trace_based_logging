@@ -57,8 +57,14 @@ def transform_config(nested_config):
     flat_config["non_dapp_delegatecalls"] = non_dapp_output.get("delegatecalls")
     flat_config["non_dapp_zero_value_calls"] = non_dapp_output.get("zero_value_calls")
     flat_config["non_dapp_creations"] = non_dapp_output.get("creations")
-    
-    # Other output settings
+
+    # stage settings
+    stages = nested_config.get("stages", {})
+    flat_config["extraction"] = stages.get("extraction")
+    flat_config["decoding"] = stages.get("decoding")
+    flat_config["transformation"] = stages.get("transformation") 
+            
+    # misc settings
     misc = nested_config.get("misc", {})
     flat_config["sensitive_events"] = misc.get("sensitive_events")
     flat_config["log_folder"] = misc.get("log_folder") 
@@ -71,7 +77,8 @@ def validate_config(config):
         "min_block", "max_block", "extract_normal_transactions", "extract_internal_transactions",
         "extract_transactions_by_events", "dapp_events", "dapp_calls", "dapp_zero_value_calls",
         "dapp_delegatecalls", "non_dapp_events", "non_dapp_calls", "non_dapp_zero_value_calls",
-        "non_dapp_delegatecalls", "non_dapp_creations", "etherscan_api_key", "log_folder", "sensitive_events"
+        "non_dapp_delegatecalls", "non_dapp_creations", "etherscan_api_key", "log_folder", "sensitive_events",
+        "extraction", "decoding", "transformation"
     ]
     for key in required_keys:
         if key not in config:

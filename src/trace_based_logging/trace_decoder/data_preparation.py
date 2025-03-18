@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-from . import event_decoder
 # import trace_decoder.event_decoder as event_decoder
 import datetime
 import time
@@ -9,6 +8,7 @@ import json
 from web3 import Web3, HTTPProvider
 import os
 from src.trace_based_logging.logging_config import setup_logging
+from . import event_decoder
 
 
 
@@ -27,10 +27,27 @@ def load_event_definitions(config_file):
 def low(x):
     return x.lower()
 
-# TODO: if contracts_dapp not provided, load it. Little tricky: contracts_dapp is a set provided in the config, but there might ba a longer version saved in a previous run
-# Good opportunity to move loading data like df_log into a seperate function.
 
-def base_transformation(df_log, contracts_dapp, config, state):
+def load_data(config, state, file_name_snippet):
+    dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    base_contract = state["base_contract"]
+    csv_path = os.path.join(dir_path, "resources", f"{file_name_snippet}_{base_contract}_{config['min_block']}_{config['max_block']}.csv")
+    pkl_path = os.path.join(dir_path, "resources", f"{file_name_snippet}_{base_contract}_{config['min_block']}_{config['max_block']}.pkl")
+
+    # Try to load the DataFrame
+    if os.path.exists(pkl_path):
+        data = pd.read_pickle(pkl_path)
+        logger.info(f"Loaded {file_name_snippet} from pickle file.")
+        return data
+    elif os.path.exists(csv_path):
+        data = pd.read_csv(csv_path)
+        logger.info(f"Loaded {file_name_snippet} from CSV file.")
+        return data
+    else:
+        raise FileNotFoundError("Neither the pickle file nor the CSV file exists.")
+
+
+def base_transformation(df_log, contracts_dapp):
     """
     Performs basic data transformations on a DataFrame of blockchain logs. 
     This includes resetting the index, separating and cleaning 'from' and 'address' fields from ordering attachments,
@@ -66,26 +83,10 @@ def base_transformation(df_log, contracts_dapp, config, state):
     
     
     if not isinstance(df_log, pd.DataFrame):
-        logger.info("The function input df_log must be a pandas DataFrame. Trying to load the DataFrame from a pickle or CSV file.")
-        
-        dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
-
-        base_contract = state["base_contract"]
-        csv_path = os.path.join(dir_path, "resources", f"df_trace_tree_{base_contract}_{config['min_block']}_{config['max_block']}.csv")
-        pkl_path = os.path.join(dir_path, "resources", f"df_trace_tree_{base_contract}_{config['min_block']}_{config['max_block']}.pkl")
-
-        # Try to load the DataFrame
-        if os.path.exists(pkl_path):
-            df_log = pd.read_pickle(pkl_path)
-            logger.info("Loaded DataFrame from pickle file.")
-        elif os.path.exists(csv_path):
-            df_log = pd.read_csv(csv_path)
-            logger.info("Loaded DataFrame from CSV file.")
-        else:
-            raise FileNotFoundError("Neither the pickle file nor the CSV file exists.")
+        raise ValueError("The function input df_log must be a pandas DataFrame")
 
     if not isinstance(contracts_dapp, (list, set)):
-        raise ValueError("The function input contracts_dapp must be a pandas DataFrame")
+        raise ValueError("The function input contracts_dapp must be a list or a set")
 
     required_columns = ['from', "to", 'address', 'timeStamp']
     missing_columns = [col for col in required_columns if col not in df_log.columns]
