@@ -26,7 +26,7 @@ def fix_dataframe_for_parquet(df):
                 sample = nonnull.iloc[0]
                 # If sample is not bytes, convert entire column to string.
                 df[col] = df[col].apply(lambda x: str(x) if (not np.isscalar(x)) or (pd.notnull(x)) else x)
-                logger.info(f"Converted column '{col}' to string.")
+                logger.debug(f"Converted column '{col}' to string.")
     return df
 
 
@@ -50,10 +50,10 @@ def convert_to_parquet(resources_dir, log_folder, dataset_name, base_contract, m
     
     if os.path.exists(pkl_path):
         df = pd.read_pickle(pkl_path)
-        logger.info(f"Loaded {file_base} from PKL.")
+        logger.debug(f"Loaded {file_base} from PKL.")
     elif os.path.exists(csv_path):
         df = pd.read_csv(csv_path, low_memory=False)
-        logger.info(f"Loaded {file_base} from CSV.")
+        logger.debug(f"Loaded {file_base} from CSV.")
     else:
         logger.error(f"Neither PKL nor CSV file found for {file_base}. Skipping conversion.")
         return
@@ -64,7 +64,7 @@ def convert_to_parquet(resources_dir, log_folder, dataset_name, base_contract, m
     parquet_path = os.path.join(resources_dir, log_folder, file_base + ".parquet")
     try:
         df.to_parquet(parquet_path)
-        logger.info(f"Converted {file_base} to Parquet: {parquet_path}")
+        logger.debug(f"Converted {file_base} to Parquet: {parquet_path}")
     except Exception as e:
         logger.error(f"Failed to write {file_base} to Parquet: {e}")
 
@@ -90,7 +90,7 @@ def convert_datasets(resources_dir, log_folder, CONFIG, toggle_to_filename):
         toggle_to_filename[key] for key, value in CONFIG.items()
         if value and key in toggle_to_filename
     ]
-    logger.info(f"Datasets selected for conversion: {selected_datasets}")
+    logger.info(f"Datasets selected for conversion: {selected_datasets} -- now loading and covnerting data.")
     
     for ds in selected_datasets:
         convert_to_parquet(resources_dir, log_folder, ds, CONFIG["base_contract"], CONFIG["min_block"], CONFIG["max_block"])
@@ -128,7 +128,7 @@ def load_overall_dataframe(resources_dir, log_folder, selected_datasets, desired
                 df = pd.read_parquet(parquet_path, columns=columns_to_load)
                 df.dropna(how='all', axis=1, inplace=True)
                 overall_dataframe_list.append(df)
-                logger.info(f"Loaded parquet file {parquet_path} with columns: {columns_to_load}")
+                logger.debug(f"Loaded parquet file {parquet_path} with columns: {columns_to_load}")
             except Exception as e:
                 logger.error(f"Error loading parquet file {parquet_path}: {e}")
         else:

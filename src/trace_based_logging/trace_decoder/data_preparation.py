@@ -27,6 +27,9 @@ def load_event_definitions(config_file):
 def low(x):
     return x.lower()
 
+# TODO: if contracts_dapp not provided, load it. Little tricky: contracts_dapp is a set provided in the config, but there might ba a longer version saved in a previous run
+# Good opportunity to move loading data like df_log into a seperate function.
+
 def base_transformation(df_log, contracts_dapp, config, state):
     """
     Performs basic data transformations on a DataFrame of blockchain logs. 
@@ -151,26 +154,27 @@ def base_transformation(df_log, contracts_dapp, config, state):
 def address_selection(df_log):
     # only events in the traces have the attribute "address", so selecting contract addresses in which events occurred == selecting entries of the attribute "address"
     try: 
-        addresses_events = df_log["address"].unique()
-        addresses_events = list(addresses_events)
+        if "address" in df_log.columns:
+            addresses_events = df_log["address"].dropna().unique().tolist()
+            logger.debug("ADDRESSES EVENTS: ", addresses_events)
     except: 
-        logger.debug("Selecting contracts with events failed. No contracts with events?")
+        logger.debug("Selecting contracts with events failed.")
         addresses_events = list()
     # only CALLs have the characteristic "CALL" in the attribute "calltype"
     # The call came from outside the contract INTO the contract, so the contract address is in the attribute "to"
     try:  
-        addresses_calls = df_log[df_log["calltype"] == "CALL"]["to"].unique()
-        addresses_calls = list(addresses_calls)
+        if "calltype" in df_log.columns:
+            addresses_calls = df_log[df_log["calltype"] == "CALL"]["to"].dropna().unique().tolist()
     except: 
-        logger.debug("Selecting contracts with CALLs failed. No contracts with CALLs?")
+        logger.debug("Selecting contracts with CALLs failed.")
         addresses_calls = list()
     # Only DELEGATECALLs have the characteristic "DELEGATECALL" in the attribute "calltype"
     # The call came from outside the contract INTO the contract, so the contract address is in the attribute "to" 
     try: 
-        addresses_delegatecall = df_log[df_log["calltype"] == "DELEGATECALL"]["to"].unique()
-        addresses_delegatecall = list(addresses_delegatecall)
+        if "calltype" in df_log.columns:
+            addresses_delegatecall = df_log[df_log["calltype"] == "DELEGATECALL"]["to"].dropna().unique().tolist()
     except:
-        logger.debug("Selecting contracts with events failed. No contracts with DELEGATECALLs?")
+        logger.debug("Selecting contracts with events failed.")
         addresses_delegatecall = list()
 
     # Make one list of all addresses with relevant entries
