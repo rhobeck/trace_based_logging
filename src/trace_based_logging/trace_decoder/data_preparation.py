@@ -31,8 +31,8 @@ def low(x):
 def load_data(config, state, file_name_snippet):
     dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
     base_contract = state["base_contract"]
-    csv_path = os.path.join(dir_path, "resources", f"{file_name_snippet}_{base_contract}_{config['min_block']}_{config['max_block']}.csv")
-    pkl_path = os.path.join(dir_path, "resources", f"{file_name_snippet}_{base_contract}_{config['min_block']}_{config['max_block']}.pkl")
+    csv_path = os.path.join(dir_path, "resources", config["log_folder"], "extraction", f"{file_name_snippet}_{base_contract}_{config['min_block']}_{config['max_block']}.csv")
+    pkl_path = os.path.join(dir_path, "resources", config["log_folder"], "extraction", f"{file_name_snippet}_{base_contract}_{config['min_block']}_{config['max_block']}.pkl")
 
     # Try to load the DataFrame
     if os.path.exists(pkl_path):

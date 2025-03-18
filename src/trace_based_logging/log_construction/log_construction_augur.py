@@ -30,23 +30,23 @@ def fix_dataframe_for_parquet(df):
     return df
 
 
-def convert_to_parquet(resources_dir, log_folder, dataset_name, base_contract, min_block, max_block):
+def convert_to_parquet(resources_dir, log_folder, file_name_snippet, base_contract, min_block, max_block):
     """
     Converts a dataset (saved as CSV/PKL) to Parquet.
     The function builds the filename using the same scheme as during saving:
-        file_base = f"{dataset_name}_{base_contract}_{min_block}_{max_block}"
+        file_base = f"{file_name_snippet}_{base_contract}_{min_block}_{max_block}"
     
     Args:
         resources_dir (str): Base directory where log_folder is located.
         log_folder (str): Folder name where the files are stored.
-        dataset_name (str): Base name of the dataset (without extension).
+        file_name_snippet (str): Base name of the dataset (without extension).
         base_contract (str): Base contract address used in the file naming.
         min_block (int): Minimum block number.
         max_block (int): Maximum block number.
     """
-    file_base = f"{dataset_name}_{base_contract}_{min_block}_{max_block}"
-    pkl_path = os.path.join(resources_dir, log_folder, file_base + ".pkl")
-    csv_path = os.path.join(resources_dir, log_folder, file_base + ".csv")
+    file_base = f"{file_name_snippet}_{base_contract}_{min_block}_{max_block}"
+    pkl_path = os.path.join(resources_dir, log_folder, "transformation", file_base + ".pkl")
+    csv_path = os.path.join(resources_dir, log_folder, "transformation", file_base + ".csv")
     
     if os.path.exists(pkl_path):
         df = pd.read_pickle(pkl_path)
@@ -61,7 +61,7 @@ def convert_to_parquet(resources_dir, log_folder, dataset_name, base_contract, m
     # Fix the dataframe to avoid pyarrow conversion issues.
     df = fix_dataframe_for_parquet(df)
 
-    parquet_path = os.path.join(resources_dir, log_folder, file_base + ".parquet")
+    parquet_path = os.path.join(resources_dir, log_folder, "transformation", file_base + ".parquet")
     try:
         df.to_parquet(parquet_path)
         logger.debug(f"Converted {file_base} to Parquet: {parquet_path}")
@@ -90,7 +90,7 @@ def convert_datasets(resources_dir, log_folder, CONFIG, toggle_to_filename):
         toggle_to_filename[key] for key, value in CONFIG.items()
         if value and key in toggle_to_filename
     ]
-    logger.info(f"Datasets selected for conversion: {selected_datasets} -- now loading and covnerting data.")
+    logger.info(f"Datasets selected for conversion: {selected_datasets} -- now loading and converting data.")
     
     for ds in selected_datasets:
         convert_to_parquet(resources_dir, log_folder, ds, CONFIG["base_contract"], CONFIG["min_block"], CONFIG["max_block"])
@@ -119,7 +119,7 @@ def load_overall_dataframe(resources_dir, log_folder, selected_datasets, desired
     
     for ds in selected_datasets:
         file_base = f'{ds}_{CONFIG["base_contract"]}_{CONFIG["min_block"]}_{CONFIG["max_block"]}'
-        parquet_path = os.path.join(resources_dir, log_folder, file_base + ".parquet")
+        parquet_path = os.path.join(resources_dir, CONFIG["log_folder"], "transformation", file_base + ".parquet")
         if os.path.exists(parquet_path):
             try:
                 parquet_file = pq.ParquetFile(parquet_path)
@@ -132,7 +132,7 @@ def load_overall_dataframe(resources_dir, log_folder, selected_datasets, desired
             except Exception as e:
                 logger.error(f"Error loading parquet file {parquet_path}: {e}")
         else:
-            logger.error(f"Parquet file not found for dataset: {file_base}")
+            logger.error(f"Parquet file not found for dataset: {parquet_path}")
     
     if overall_dataframe_list:
         overall_dataframe = pd.concat(overall_dataframe_list)
@@ -143,7 +143,7 @@ def load_overall_dataframe(resources_dir, log_folder, selected_datasets, desired
     
     return overall_dataframe
 
-def create_ocel_files(overall_dataframe, output_dir):
+def create_ocel_files(overall_dataframe, RESOURCES_DIR, CONFIG):
     """
     This function was contributed by Alessandro Berti.
     Code snippets were added to handle missing columns and log warnings.
@@ -154,16 +154,11 @@ def create_ocel_files(overall_dataframe, output_dir):
     
     Args:
         overall_dataframe (pd.DataFrame): The combined dataframe with all event data.
-        output_dir (str): Directory where the OCEL Parquet files will be stored.
+        RESOURCES_DIR (str): Directory where the OCEL Parquet files will be stored.
         
     Returns:
         OCEL: An OCEL object built from the stored Parquet files.
     """
-    # Ensure the output directory exists.
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir, exist_ok=True)
-        logger.info(f"Created OCEL output directory: {output_dir}")
-
     objects_list = []
 
     # EOA objects: union of unique senders and targets (if available).
@@ -338,9 +333,9 @@ def create_ocel_files(overall_dataframe, output_dir):
     logger.info(f"Constructed events dataframe with shape: {events_df.shape}")
 
     # Write OCEL components to Parquet files.
-    objects_path = os.path.join(output_dir, "ocel_objects.parquet")
-    events_path = os.path.join(output_dir, "ocel_events.parquet")
-    e2o_path = os.path.join(output_dir, "ocel_e2o.parquet")
+    objects_path = os.path.join(RESOURCES_DIR, CONFIG["log_folder"], "transformation", "ocel_objects.parquet")
+    events_path = os.path.join(RESOURCES_DIR, CONFIG["log_folder"], "transformation", "ocel_events.parquet")
+    e2o_path = os.path.join(RESOURCES_DIR, CONFIG["log_folder"], "transformation", "ocel_e2o.parquet")
 
     objects_df.to_parquet(objects_path, index=False)
     logger.info(f"OCEL objects written to: {objects_path}")
@@ -372,7 +367,7 @@ def save_ocel_xml(ocel, resources_dir, log_folder, base_contract, min_block, max
         max_block (int): Maximum block number.
     """
     file_base = f"ocel_{base_contract}_{min_block}_{max_block}.xmlocel"
-    target_path = os.path.join(resources_dir, log_folder, file_base)
+    target_path = os.path.join(resources_dir, log_folder, "transformation", file_base)
     try:
         export_ocel(ocel, target_path, variant=Variants.CLASSIC)
         logger.info(f"OCEL exported to XML-OCEL at: {target_path}")
@@ -408,7 +403,7 @@ def build_log(RESOURCES_DIR, LOG_FOLDER, CONFIG):
     overall_dataframe = load_overall_dataframe(RESOURCES_DIR, LOG_FOLDER, selected_datasets, desired_columns, CONFIG)
      
     # Create OCEL files and object.
-    ocel_obj = create_ocel_files(overall_dataframe, RESOURCES_DIR)
+    ocel_obj = create_ocel_files(overall_dataframe, RESOURCES_DIR, CONFIG)
     
     # Save the OCEL object as an XML-OCEL file using the same naming scheme.
     save_ocel_xml(ocel_obj, RESOURCES_DIR, LOG_FOLDER, CONFIG["base_contract"], CONFIG["min_block"], CONFIG["max_block"])

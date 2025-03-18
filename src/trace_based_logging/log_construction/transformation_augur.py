@@ -23,17 +23,17 @@ def load_mappings(mapping_path):
         logger.error(f"Error loading mappings: {e}")
         raise
 
-def load_resources(base_contract, min_block, max_block, resources_dir):
+def load_resources(base_contract, min_block, max_block, resources_dir, CONFIG):
     logger.info("Loading resources.")
-    creations_path = os.path.join(resources_dir, f'creations_{base_contract}_{min_block}_{max_block}.pkl')
-    contracts_dapp_path = os.path.join(resources_dir, f'contracts_dapp_{base_contract}_{min_block}_{max_block}.pkl')
+    creations_path = os.path.join(resources_dir, CONFIG["log_folder"], "decoding", f'creations_{base_contract}_{min_block}_{max_block}.pkl')
+    contracts_dapp_path = os.path.join(resources_dir, CONFIG["log_folder"], "extraction", f'contracts_dapp_{base_contract}_{min_block}_{max_block}.pkl')
     creations = pickle.load(open(creations_path, "rb"))
     contracts_dapp = pickle.load(open(contracts_dapp_path, "rb"))
     return creations, contracts_dapp
 
-def get_reverted_transactions(resources_dir, base_contract, min_block, max_block):
+def get_reverted_transactions(resources_dir, base_contract, min_block, max_block, CONFIG):
     logger.info("Log construction identifying reverted transactions.")
-    trace_tree_csv = os.path.join(resources_dir, f"df_trace_tree_{base_contract}_{min_block}_{max_block}.csv")
+    trace_tree_csv = os.path.join(resources_dir, CONFIG["log_folder"], "extraction", f"df_trace_tree_{base_contract}_{min_block}_{max_block}.csv")
     
     try:
         # Read just the header to get the column names
@@ -66,8 +66,8 @@ def get_reverted_transactions(resources_dir, base_contract, min_block, max_block
 def load_if_not_found_in_state(resources_dir, file_name_snipped, state, CONFIG):
     
     base_contract = state["base_contract"]
-    csv_path = os.path.join(resources_dir, f"{file_name_snipped}_{base_contract}_{CONFIG['min_block']}_{CONFIG['max_block']}.csv")
-    pkl_path = os.path.join(resources_dir, f"{file_name_snipped}_{base_contract}_{CONFIG['min_block']}_{CONFIG['max_block']}.pkl")
+    csv_path = os.path.join(resources_dir, CONFIG["log_folder"], "decoding", f"{file_name_snipped}_{base_contract}_{CONFIG['min_block']}_{CONFIG['max_block']}.csv")
+    pkl_path = os.path.join(resources_dir, CONFIG["log_folder"], "decoding", f"{file_name_snipped}_{base_contract}_{CONFIG['min_block']}_{CONFIG['max_block']}.pkl")
 
     # Try to load the DataFrame
     if os.path.exists(pkl_path):
@@ -364,8 +364,8 @@ def transform_creations_non_dapp(creations, contracts_dapp):
 
 def save_transformed_category(df, category_name, base_contract, min_block, max_block, resources_dir, log_folder):
     file_base = f"{category_name}_{base_contract}_{min_block}_{max_block}"
-    csv_path = os.path.join(resources_dir, log_folder, file_base + ".csv")
-    pkl_path = os.path.join(resources_dir, log_folder, file_base + ".pkl")
+    csv_path = os.path.join(resources_dir, log_folder, "transformation", file_base + ".csv")
+    pkl_path = os.path.join(resources_dir, log_folder, "transformation", file_base + ".pkl")
     df.to_csv(csv_path)
     with open(pkl_path, 'wb') as f:
         pickle.dump(df, f)
@@ -389,8 +389,8 @@ def transform_augur_data(resources_dir, log_folder, state, CONFIG):
     
     mapping_path = os.path.join(os.path.dirname(__file__), "mappings.json")
     mappings = load_mappings(mapping_path)
-    creations, contracts_dapp = load_resources(base_contract, min_block, max_block, resources_dir)
-    txs_reverted = get_reverted_transactions(resources_dir, base_contract, min_block, max_block)
+    creations, contracts_dapp = load_resources(base_contract, min_block, max_block, resources_dir, CONFIG)
+    txs_reverted = get_reverted_transactions(resources_dir, base_contract, min_block, max_block, CONFIG)
     
     market_info = None
     market_type_info = None

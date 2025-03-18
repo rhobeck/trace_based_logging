@@ -47,6 +47,6 @@
 
     "misc": {
         "sensitive_events": false,
-        "log_folder": "log_120325"
+        "log_folder": "output"
     }
 }

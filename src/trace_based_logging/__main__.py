@@ -10,7 +10,7 @@ logger = setup_logging()
 
 from src.trace_based_logging.config import load_config, build_node_url, initialize_extraction_state
 from src.trace_based_logging.extraction import process_transactions, insert_transaction_index
-from src.trace_based_logging.saving import save_trace_data
+from src.trace_based_logging.saving import save_trace_data, folder_set_up
 from src.trace_based_logging.decoding import decode_all
 
 def main():
@@ -23,6 +23,7 @@ def main():
         from src.trace_based_logging.raw_trace_retriever import trace_retriever_utils
         state = initialize_extraction_state(config, trace_retriever_utils)
         trace_retriever_utils.check_socket(config["host"], config["port"])
+        folder_set_up(dir_path, config)
     except Exception as e:
         logger.error(f"Error in set-up phase: {e}")
     
@@ -57,7 +58,7 @@ def main():
             del state["trace_tree"]
             dict_abi = data_preparation.create_abi_dict(data_preparation.address_selection(df_log), config["etherscan_api_key"])
             dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-            abi_path = os.path.join(dir_path, "resources", f"dict_abi_{state['base_contract']}_{config['min_block']}_{config['max_block']}.pkl")
+            abi_path = os.path.join(dir_path, "resources", config["log_folder"], "decoding", f"dict_abi_{state['base_contract']}_{config['min_block']}_{config['max_block']}.pkl")
             pickle.dump(dict_abi, open(abi_path, 'wb'))
             logger.info(f"Saved ABI dictionary at: {abi_path}")
             decode_all(df_log, state, config, dict_abi, build_node_url)
