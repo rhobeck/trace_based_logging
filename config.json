@@ -1,26 +1,52 @@
 {
-    "port": 8081,
-    "protocol": "http://",
-    "host": "127.0.0.1",
-    "list_contracts": [
-        "0x75228dce4d82566d93068a8d5d49435216551599", 
-        "0x57f1c2953630056aaadb9bfbda05369e6af7872b"
-    ],
-    "list_predefined_non_dapp_contracts": [
-        "0x0000000000000000000000000000000000000000"
-    ],
-    "min_block": 5926229,
-    "max_block": 5930573,
-    "extract_normal_transactions": true,
-    "extract_internal_transactions": true,
-    "extract_transactions_by_events": true,
-    "etherscan_api_key": "Etherscan API key",
-    "dapp_decode_events": true,
-    "dapp_decode_calls_with_ether_transfer": true,
-    "dapp_decode_calls_with_no_ether_transfer": true, 
-    "dapp_decode_delegatecalls": true,
-    "non_dapp_decode_events": false,
-    "non_dapp_decode_calls_with_ether_transfer": false,
-    "non_dapp_decode_calls_with_no_ether_transfer": false, 
-    "non_dapp_decode_delegatecalls": false
+    "ethereum_node": {
+        "protocol": "http://",
+        "host": "127.0.0.1",
+        "port": 8081
+    },
+
+    "contracts": {
+        "dapp": ["0x75228dce4d82566d93068a8d5d49435216551599", "0x57f1c2953630056aaadb9bfbda05369e6af7872b"],
+        "non_dapp": ["0x0000000000000000000000000000000000000000"]
+    },
+
+    "block_range": {
+        "min_block": 5926229,
+        "max_block": 5930573
+    },
+
+    "extraction": {
+        "normal_transactions": true,
+        "internal_transactions": true,
+        "transactions_by_events": true,
+        "etherscan_api_key": "ETHERSCAN_API_KEY"
+    },
+    
+    "output": {
+        "dapp": {
+            "events": true,
+            "calls": true,
+            "delegatecalls": true,
+            "zero_value_calls": true,
+            "creations":true
+        },
+        "non_dapp": {
+            "events": true,
+            "calls": true,
+            "delegatecalls": true,
+            "zero_value_calls": true,
+            "creations": true
+        }
+    },
+
+    "stages": {
+        "extraction": true,
+        "decoding": true,
+        "transformation": true
+    },
+
+    "misc": {
+        "sensitive_events": false,
+        "log_folder": "output"
+    }
 }

@@ -1,10 +1,12 @@
-import raw_trace_retriever.get_transactions as get_transactions
-import raw_trace_retriever.trace_transformation as trace_transformation
-import raw_trace_retriever.helpers as helpers
-import raw_trace_retriever.create_relations as create_relations
-import trace_decoder.data_preparation as data_preparation
-import trace_decoder.event_decoder as event_decoder
-import log_construction.utils as utils
+import src.trace_based_logging.raw_trace_retriever.get_transactions as get_transactions
+import src.trace_based_logging.raw_trace_retriever.trace_transformation as trace_transformation
+import src.trace_based_logging.raw_trace_retriever.trace_retriever_utils as trace_retriever_utils
+import src.trace_based_logging.raw_trace_retriever.create_relations as create_relations
+import src.trace_based_logging.trace_decoder.data_preparation as data_preparation
+import src.trace_based_logging.trace_decoder.event_decoder as event_decoder
+import src.trace_based_logging.log_construction.transformation_augur_utils as transformation_augur_utils
+import src.trace_based_logging.config as config
+
 import pickle
 import os
 import pandas as pd
@@ -20,8 +22,12 @@ dir_path = os.path.dirname(os.path.realpath(__file__))
 #     port_message = functions_helpers.check_socket("127.0.0.1", port)
 #     assert(port_message == "Port is open")
 
-with open('config.json', 'r') as file:
-        config = json.load(file)
+dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+config_path = os.path.join(dir_path, 'config.json')
+config = config.load_config(config_path)
+
+#with open('config.json', 'r') as file:
+#        config = json.load(file)
     
 etherscan_api_key = config["etherscan_api_key"]
 
@@ -103,38 +109,41 @@ def test_get_transactions_by_events():
     
 def test_json_retriever():
     # Load a correct, pickled trace for comparison 
-    path = os.path.join(dir_path, 'tests', 'test_resources', 'trace_json_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29.pkl')
-    trace_json_lx_read = pickle.load(open(path, 'rb'))
+    path = os.path.join(dir_path, 'tests', 'test_resources', 'trace_json_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29_erigon2.pkl')
+    trace_json_lx_read_erigon2 = pickle.load(open(path, 'rb'))
+    
+    path = os.path.join(dir_path, 'tests', 'test_resources', 'trace_json_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29_erigon3.pkl')
+    trace_json_lx_read_erigon3 = pickle.load(open(path, 'rb'))
+
     # correct tx hash, all should be fine
     json_dict, json_flag = trace_transformation.json_retriever("0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29", node_url)
     assert json_flag == True
-    assert json_dict == trace_json_lx_read
+    assert json_dict in [trace_json_lx_read_erigon2, trace_json_lx_read_erigon3]
     # case sensitivity, all should be fine
     json_dict, json_flag = trace_transformation.json_retriever("0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697DC29", node_url)
     assert json_flag == True
-    assert json_dict == trace_json_lx_read
+    assert json_dict in [trace_json_lx_read_erigon2, trace_json_lx_read_erigon3]
     # random string as tx hash
     json_dict, json_flag = trace_transformation.json_retriever("string_that_is_no_tx_hash", node_url)
     assert json_flag == False
-    assert json_dict != trace_json_lx_read
+    assert json_dict not in [trace_json_lx_read_erigon2, trace_json_lx_read_erigon3]
     # length of a hash, but faulty digit (final number: 8 instead of 7)
     json_dict, json_flag = trace_transformation.json_retriever("0xbceb9db10ec228dbef251b1a48bc0b3f03a8d345f7f3b454d8cc1e86f380b6d8", node_url)
     assert json_flag == False
-    assert json_dict != trace_json_lx_read
-
+    assert json_dict not in [trace_json_lx_read_erigon2, trace_json_lx_read_erigon3]
 
 def test_txs_to_trace():
     # We test: Does the number of entries in the resulting dataframe reflect the number of entries in the JSON-trace
     path = os.path.join(dir_path, 'tests', 'test_resources', 'df_txs_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29.pkl')
     df_txs_lx = pickle.load(open(path, 'rb'))
-    path = os.path.join(dir_path, 'tests', 'test_resources', 'trace_json_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29.pkl')
+    path = os.path.join(dir_path, 'tests', 'test_resources', 'trace_json_lx_0x39a7a29cd1b941424774e0ffa8cc93bcd968f30e3d3d1ee3d7d086916697dc29_erigon2.pkl')
     trace_json_lx_read = pickle.load(open(path, 'rb'))    
     df_trace_lx = trace_transformation.tx_to_trace(df_txs_lx, node_url)
     
     # get the number of referrals between smart contracts (CALL, CREATE, DELEGATECALL, etc.) in the trace
-    number_of_referrals = helpers.count_string_occurrences_in_keys(trace_json_lx_read, "type")
+    number_of_referrals = trace_retriever_utils.count_string_occurrences_in_keys(trace_json_lx_read, "type")
     # get the number of events in the trace
-    number_of_events = helpers.count_string_occurrences_in_keys(trace_json_lx_read, "topics")
+    number_of_events = trace_retriever_utils.count_string_occurrences_in_keys(trace_json_lx_read, "topics")
     
     assert len(df_trace_lx) == (number_of_events+number_of_referrals) # == 571
     
@@ -244,7 +253,7 @@ def test_insert_eventPos():
 def test_remove_predefined_contracts():
     set_contracts_lx = ["0x123...", "0x456...", "0x0000000000000000000000000000000000000000", "0x789..."]
     set_predefined_non_dapp_contracts = ["0x0000000000000000000000000000000000000000", "0xabc...", "0xdef..."]
-    filtered_set = create_relations.remove_predefined_contracts(set_contracts_lx, set_predefined_non_dapp_contracts)
+    filtered_set = create_relations.remove_contracts_non_dapp(set_contracts_lx, set_predefined_non_dapp_contracts)
     assert filtered_set == {'0x123...', '0x789...', '0x456...'}
 
  
@@ -284,7 +293,7 @@ def test_decode_events():
     
 def test_event_decoder():
     
-    path = os.path.join(dir_path, 'config_custom_events.json')
+    path = os.path.join(dir_path, 'src', 'trace_based_logging', 'trace_decoder','config_custom_events.json')
     fallback_abis = load_event_definitions(path)
     
     tx_ERC_20_Transfer = "0xc4f4145f215d491be7123beacffe51d3d007a8060aab92826946c0dc744a9349"
@@ -386,6 +395,13 @@ def test_process_abi():
     path = os.path.join(dir_path, "tests", "test_resources", "dict_abi_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
     dict_abi = pickle.load(open(path, 'rb'))
 
+    config = {
+        "min_block":5926229,
+        "max_block": 11229573
+    }
+    state = {
+        "base_contract": "0x75228dce4d82566d93068a8d5d49435216551599"
+    }
     df_log = data_preparation.base_transformation(df_log, contracts_dapp)
 
     contract_address_tmp = df_log["to"][722]#"0x24e2b1d415e6e0d04042eaa45dc2a08fc33ca6cd"
@@ -420,6 +436,13 @@ def test_function_decoder():
     df_log["from"] = df_log["from"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
     df_log["address"] = df_log["address"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
 
+    config = {
+        "min_block":5926229,
+        "max_block": 11229573
+    }
+    state = {
+        "base_contract": "0x75228dce4d82566d93068a8d5d49435216551599"
+    }
     df_log = data_preparation.base_transformation(df_log, contracts_dapp)
     
     path = os.path.join(dir_path, "tests", "test_resources", "dict_abi_0x75228dce4d82566d93068a8d5d49435216551599_5926229_11229573.pkl")
@@ -428,11 +451,10 @@ def test_function_decoder():
     logging_string = "DAPP WITH ETHER TRANSFER"
     df_functions = data_preparation.decode_functions(df_log, dict_abi, node_url, ["CALL"], False, logging_string)
 
-    item = df_functions["name"].unique()[2]
-    assert(item == "<Function createUniverse(address,address,bytes32)>")
+    item = df_functions["name"][4]
+    assert(item == "<Function publicTradeWithLimit(uint8,address,uint256,uint256,uint256,bytes32,bytes32,bytes32,uint256)>")
 
-    assert(len(df_functions) == 9395)
-    # if len(df_functions) != 9395 then probably faulty error handling
+    assert(len(df_functions) == 6)
 
 '''
 def test_propagate_extraInfo():

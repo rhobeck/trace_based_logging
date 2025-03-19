@@ -2,9 +2,24 @@ import pandas as pd
 import json
 from web3 import Web3
 
+from src.trace_based_logging.logging_config import setup_logging
+
+# Create a logger
+logger = setup_logging()
 
 def low(x):
-    return x.lower()
+    """
+    Converts the input string to lowercase. If the input is not a string, 
+    an appropriate error is raised.
+    """
+    if not isinstance(x, str):
+        raise TypeError("Input must be a string")
+
+    try:
+        return x.lower()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        raise ValueError(f"Failed to convert to lowercase due to an unexpected error: {e}")
 
 
 def initial_transformation_events(df, dapp_flag, txs_reverted):
@@ -26,15 +41,26 @@ def initial_transformation_events(df, dapp_flag, txs_reverted):
         df_transformed = initial_transformation_events(df, True)
     """
     #df.dropna(subset=["name"], inplace=True)
-    df.loc[df['name'].isnull(),'name'] = "undecoded event"
+    if "name" in df.columns:
+        df.loc[df['name'].isnull(),'name'] = "undecoded event"
     # Convert addresses to lowercase
-    df["address_lower"] = df[~df["address"].isnull()]["address"].apply(lambda x: x.lower())
+    if "address" in df.columns:
+        df["address_lower"] = df[~df["address"].isnull()]["address"].apply(lambda x: x.lower())
+    
     if dapp_flag == True: 
-        df["market"] = df[~df["market"].isnull()]["market"].apply(lambda x: x.lower())
+        if "market" in df.columns:
+            df["market"] = df[~df["market"].isnull()]["market"].apply(lambda x: x.lower())
 
     # Rename columns for consistency
-    df.rename(columns={"hash": "txHash"}, inplace=True)
-    df.rename(columns={"name": "Activity"}, inplace=True)
+    if "hash" in df.columns:
+        df.rename(columns={"hash": "txHash"}, inplace=True)
+    else: 
+        logger.info("No 'hash' found.")
+        
+    if "name" in df.columns:
+        df.rename(columns={"name": "Activity"}, inplace=True)
+    else:
+        logger.info("No 'name' of activities found.")
 
     # Remove unnecessary columns if present
     if "Unnamed: 0" in df.columns.values.tolist():
@@ -46,8 +72,9 @@ def initial_transformation_events(df, dapp_flag, txs_reverted):
     df["flag_log_entry"] = True
     
     # flag reverted oerations
-    mask_reverted = df["txHash"].isin(list(txs_reverted))
-    df["flag_reverted"] = mask_reverted
+    if "txHash" in df.columns:
+        mask_reverted = df["txHash"].isin(list(txs_reverted))
+        df["flag_reverted"] = mask_reverted
     
     # Add a flag for DApp contracts based on the provided flag
     if dapp_flag:
@@ -109,7 +136,9 @@ def rename_attribute(df_log, attribute, attribute_new, attribute_map):
     """
     # Check if the attribute exists in the DataFrame
     if attribute not in df_log.columns:
-        raise KeyError(f"Attribute '{attribute}' not found in DataFrame.")
+        logger.info(f"Attribute '{attribute}' not found, so cannot be renamed.")
+        #raise KeyError(f"Attribute '{attribute}' not found in DataFrame.")
+        return df_log
 
     # Rename the values using the mapping. Unmapped values remain unchanged.
     df_log[attribute_new] = df_log[attribute].astype(str).map(attribute_map).fillna(df_log[attribute])
@@ -190,6 +219,12 @@ def label_contracts(df_log, mappings, creations, contracts_dapp):
     Relabel the contracts. Contracts are so far known by their 42-character hex address. 
     Given their are known CAs and some of them are factories, we attempt to relabel them with readable strings
     """
+    
+    # Check if there is a primary address column
+    if "address_lower" not in df_log.columns:
+        logger.info(f"Attribute 'address_lower' not found, so there is no primary address function with contracts to rename.")
+        #raise KeyError(f"Attribute '{attribute}' not found in DataFrame.")
+        return df_log
     # create a dataframe with contracts that created other contracts. Those should be factories. Labeling them is a manual task (for now). Could be done with source code and LLM.
     # df_factories = utils.identify_factories(creations, contracts_dapp)
 
@@ -404,16 +439,26 @@ def find_between(s, first, last):
 
 def initial_transformation_calls(df_calls, dapp_flag, txs_reverted):
     df_calls.reset_index(drop=True)
-    df_calls["address_lower"] = df_calls[~df_calls["to"].isnull()]["to"].apply(lambda x: x.lower())
+    if "to" in df_calls.columns:
+        df_calls["address_lower"] = df_calls[~df_calls["to"].isnull()]["to"].apply(lambda x: x.lower())
+    else:
+        logger.info("No 'to' column found in calls.")
     
     if dapp_flag == True: 
-        df_calls["market"] = df_calls[~df_calls["market"].isnull()]["market"].apply(lambda x: x.lower())
+        if "market" in df_calls.columns:
+            df_calls["market"] = df_calls[~df_calls["market"].isnull()]["market"].apply(lambda x: x.lower())
+        else: 
+            logger.info("No 'markets' found in calls.")
 
-    df_calls.rename(columns={"hash": "txHash"}, inplace=True)
-
-    # if transaction is reverted, flag
-    mask_reverted = df_calls["txHash"].isin(list(txs_reverted))
-    df_calls["flag_reverted"] = mask_reverted
+    if "hash" in df_calls.columns:
+        df_calls.rename(columns={"hash": "txHash"}, inplace=True)
+        # if transaction is reverted, flag
+    else: 
+        logger.info("No 'hash' found in calls.")
+    
+    if "txHash" in df_calls.columns:
+        mask_reverted = df_calls["txHash"].isin(list(txs_reverted))
+        df_calls["flag_reverted"] = mask_reverted
 
     # Add a flag for DApp contracts based on the provided flag
     if dapp_flag:
@@ -424,14 +469,19 @@ def initial_transformation_calls(df_calls, dapp_flag, txs_reverted):
     # Hex values to int
     val_list = ["gas", "gasUsed", "callvalue"]
     for val in val_list:
-        df_calls.loc[:, val] = df_calls[val].apply(lambda x: int(x, 0) if str(x) != "nan" else None)
+        if val in df_calls.columns:
+            df_calls.loc[:, val] = df_calls[val].apply(lambda x: int(x, 0) if isinstance(x, str) and x.lower() != "nan" else (int(x) if pd.notnull(x) else None))
+
+    #for val in val_list:
+    #    df_calls.loc[:, val] = df_calls[val].apply(lambda x: int(x, 0) if str(x) != "nan" else None)
         
     # sort out Activity names
     # use only function name from the whole function call string
-    df_calls["name"] = df_calls["name"].apply(lambda x: find_between(x, "<Function ", "(") if str(x) != "nan" else None)
-    df_calls.loc[df_calls['calltype'].str.contains("CALL"),'Activity'] = df_calls['name']
-    # for PM4Py actvities have to have a name. Find empty activity names and fill in type:
-    df_calls.loc[df_calls['Activity'].isnull(),'Activity'] = df_calls['calltype']
+    if "name" in df_calls.columns:
+        df_calls["name"] = df_calls["name"].apply(lambda x: find_between(x, "<Function ", "(") if str(x) != "nan" else None)
+        df_calls.loc[df_calls['calltype'].str.contains("CALL"),'Activity'] = df_calls['name']
+        # for PM4Py actvities have to have a name. Find empty activity names and fill in type:
+        df_calls.loc[df_calls['Activity'].isnull(),'Activity'] = df_calls['calltype']
 
     # give all calls the flag: message_call
     

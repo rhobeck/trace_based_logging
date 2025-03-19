@@ -4,7 +4,7 @@ import requests
 import datetime
 from web3 import Web3
 import math
-from logging_config import setup_logging
+from src.trace_based_logging.logging_config import setup_logging
 
 
 """

@@ -869,6 +869,8 @@
         "migratePaybackBehalf": "delegate call to migrate payback behalf",
         "getAllMarkets": "delegate call to get all markets"
     },
+    "calls_zero_value_map_non_dapp": {
+    },
     "factory_contract_map" : {
         "0x60a977354a6ba44310b2ee061bcf19632450e51d": "Share Token Factory",
         "0x67f53b749fe432274e3f53752a91da89ef86777e": "Map Factory",

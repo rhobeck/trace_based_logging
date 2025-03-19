@@ -1,8 +1,8 @@
-from logging_config import setup_logging
+from src.trace_based_logging.logging_config import setup_logging
 
 logger = setup_logging()
 
-def create_relations(df_trace_tree, contracts_dapp, set_contracts_lx, set_predefined_non_dapp_contracts):
+def create_relations(df_trace_tree, contracts_dapp, set_contracts_lx, contracts_non_dapp):
     """
     Analyzes blockchain transaction traces stored in a dataframe to identify CREATE-relationships between contracts related to a DApp. 
     This process involves identifying contracts created by or that created known DApp contracts, and updating the set of contracts associated with the DApp. 
@@ -12,7 +12,7 @@ def create_relations(df_trace_tree, contracts_dapp, set_contracts_lx, set_predef
         df_trace_tree (pd.DataFrame): A DataFrame containing transaction trace data, which includes information on transactions with types "CREATE" or "CREATE2".
         contracts_dapp (set): A set of contract addresses known to be part of the DApp.
         set_contracts_lx (set): A dynamic set of contract addresses under investigation for their relevance to the DApp. It gets updated throughout the function execution.
-        set_predefined_non_dapp_contracts (set): A set of contract addresses known not to be part of the DApp, used for filtering purposes.
+        contracts_non_dapp (set): A set of contract addresses known not to be part of the DApp, used for filtering purposes.
 
     Returns:
         tuple: Returns a tuple containing two sets:
@@ -77,7 +77,7 @@ def create_relations(df_trace_tree, contracts_dapp, set_contracts_lx, set_predef
     # Why? Because the next iterations looks for all CREATE-relations to and from the contracts is set_contracts_lx
     # If a deployment was not clean, (e.g., a root deployed more than one DApp), the branches to non-DApp CREATION-relations can be "pruned" by removing those contracts we know do not belong to the DApp anyways.
     # The alternative would be that contracts that do not belong to the DApp are identified as DApp contracts in the next iterations. We would end up with deployment trees of multiple DApps. 
-    set_contracts_lx = remove_predefined_contracts(set_contracts_lx, set_predefined_non_dapp_contracts)
+    set_contracts_lx = remove_contracts_non_dapp(set_contracts_lx, contracts_non_dapp)
     
 
     """
@@ -91,19 +91,19 @@ def create_relations(df_trace_tree, contracts_dapp, set_contracts_lx, set_predef
     """
     contracts_dapp = contracts_dapp.union(creators_and_creations)
     
-    contracts_dapp = remove_predefined_contracts(contracts_dapp, set_predefined_non_dapp_contracts)    
+    contracts_dapp = remove_contracts_non_dapp(contracts_dapp, contracts_non_dapp)    
     
     return contracts_dapp, set_contracts_lx
 
 
-def remove_predefined_contracts(set_contracts_lx, set_predefined_non_dapp_contracts):
+def remove_contracts_non_dapp(set_contracts_lx, contracts_non_dapp):
     """
-    Removes all items in set_predefined_non_dapp_contracts from set_contracts_lx if any of 
+    Removes all items in contracts_non_dapp from set_contracts_lx if any of 
     the predefined non-DApp contracts are found in the list of contracts.
 
     Args:
         set_contracts_lx (set of str): The set of contract addresses to be filtered.
-        set_predefined_non_dapp_contracts (set of str): A set of predefined non-dApp 
+        contracts_non_dapp (set of str): A set of predefined non-dApp 
             contract addresses that should be removed from set_contracts_lx if present.
 
     Returns:
@@ -112,13 +112,13 @@ def remove_predefined_contracts(set_contracts_lx, set_predefined_non_dapp_contra
     """
     # Making sure that two sets with unique values are compared
     set_contracts_lx = set(set_contracts_lx)
-    set_predefined_non_dapp_contracts = set(set_predefined_non_dapp_contracts)
+    contracts_non_dapp = set(contracts_non_dapp)
 
     # Check if any of the predefined non-dApp contracts are in the contracts list
-    if set_contracts_lx.intersection(set_predefined_non_dapp_contracts):
+    if set_contracts_lx.intersection(contracts_non_dapp):
         # Remove all predefined non-dApp contracts from the contracts list
-        set_contracts_lx = set_contracts_lx - set_predefined_non_dapp_contracts
+        set_contracts_lx = set_contracts_lx - contracts_non_dapp
         
         # Log the removal
-        logger.info(f"Predefined non-dApp contracts were excluded {set_predefined_non_dapp_contracts}")
+        logger.info(f"Predefined non-dApp contracts were excluded {contracts_non_dapp}")
     return set_contracts_lx

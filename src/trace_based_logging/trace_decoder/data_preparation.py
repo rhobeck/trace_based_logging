@@ -1,13 +1,14 @@
 import numpy as np
 import pandas as pd
-import trace_decoder.event_decoder as event_decoder
+# import trace_decoder.event_decoder as event_decoder
 import datetime
 import time
 import requests
 import json
 from web3 import Web3, HTTPProvider
 import os
-from logging_config import setup_logging
+from src.trace_based_logging.logging_config import setup_logging
+from . import event_decoder
 
 
 
@@ -25,6 +26,26 @@ def load_event_definitions(config_file):
 
 def low(x):
     return x.lower()
+
+
+def load_data(config, state, file_name_snippet):
+    dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+    base_contract = state["base_contract"]
+    csv_path = os.path.join(dir_path, "resources", config["log_folder"], "extraction", f"{file_name_snippet}_{base_contract}_{config['min_block']}_{config['max_block']}.csv")
+    pkl_path = os.path.join(dir_path, "resources", config["log_folder"], "extraction", f"{file_name_snippet}_{base_contract}_{config['min_block']}_{config['max_block']}.pkl")
+
+    # Try to load the DataFrame
+    if os.path.exists(pkl_path):
+        data = pd.read_pickle(pkl_path)
+        logger.info(f"Loaded {file_name_snippet} from pickle file.")
+        return data
+    elif os.path.exists(csv_path):
+        data = pd.read_csv(csv_path)
+        logger.info(f"Loaded {file_name_snippet} from CSV file.")
+        return data
+    else:
+        raise FileNotFoundError("Neither the pickle file nor the CSV file exists.")
+
 
 def base_transformation(df_log, contracts_dapp):
     """
@@ -62,12 +83,12 @@ def base_transformation(df_log, contracts_dapp):
     
     
     if not isinstance(df_log, pd.DataFrame):
-        raise ValueError("The function input df_log must be a pandas DataFrame.")
+        raise ValueError("The function input df_log must be a pandas DataFrame")
 
     if not isinstance(contracts_dapp, (list, set)):
-        raise ValueError("The function input contracts_dapp must be a pandas DataFrame")
+        raise ValueError("The function input contracts_dapp must be a list or a set")
 
-    required_columns = ['from', 'address', 'timeStamp']
+    required_columns = ['from', "to", 'address', 'timeStamp']
     missing_columns = [col for col in required_columns if col not in df_log.columns]
     if missing_columns:
         raise ValueError(f"The input DataFrame is missing required columns: {', '.join(missing_columns)}")
@@ -88,10 +109,12 @@ def base_transformation(df_log, contracts_dapp):
         # df_log["address"] = df_log["address"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
 
         # timestamp formatting got lost
-        df_log["timeStamp"] = df_log["timeStamp"].apply(lambda x: int(x))
-        df_log["timeStamp"] = df_log["timeStamp"].apply(lambda x: datetime.datetime.fromtimestamp(x).strftime('%d.%m.%Y  %H:%M:%S.%f'))
-        df_log["timeStamp"] = df_log["timeStamp"].apply(lambda x: datetime.datetime.strptime(x, '%d.%m.%Y  %H:%M:%S.%f'))
-
+        if "timeStamp" in df_log.columns:
+            df_log["timeStamp"] = df_log["timeStamp"].apply(lambda x: int(x))
+            df_log["timeStamp"] = df_log["timeStamp"].apply(lambda x: datetime.datetime.fromtimestamp(x).strftime('%d.%m.%Y  %H:%M:%S.%f'))
+            df_log["timeStamp"] = df_log["timeStamp"].apply(lambda x: datetime.datetime.strptime(x, '%d.%m.%Y  %H:%M:%S.%f'))
+        else: 
+            logger.info("Base transformation: No 'timeStamp' found in the data.")
         # use the order to attach the int as milliseconds to the timestamp, so that mining algorithm can create order by timestamp
         # df_log["milliseconds"] = pd.to_timedelta(df_log["order"], unit="ms")
         # df_log["timeStamp_ordered"] = df_log["timeStamp"] + df_log["milliseconds"]
@@ -101,11 +124,14 @@ def base_transformation(df_log, contracts_dapp):
 
         # lower case for addresses
         df_log["to"] = df_log["to"].apply(lambda x: str(x).lower())
+            
         df_log["from"] = df_log["from"].apply(lambda x: str(x).lower())
+        
         df_log["address"] = df_log["address"].apply(lambda x: str(x).lower() if str(x) != "nan" else x)
 
         # rename column "type" because some function and event attributes might have the same name, that count lead to problems with concatenating dataframes
         # same for "value"
+       
         df_log.rename(columns={"type": "calltype"}, inplace=True)
         df_log.rename(columns={"value": "callvalue"}, inplace=True)
         
@@ -129,26 +155,27 @@ def base_transformation(df_log, contracts_dapp):
 def address_selection(df_log):
     # only events in the traces have the attribute "address", so selecting contract addresses in which events occurred == selecting entries of the attribute "address"
     try: 
-        addresses_events = df_log["address"].unique()
-        addresses_events = list(addresses_events)
+        if "address" in df_log.columns:
+            addresses_events = df_log["address"].dropna().unique().tolist()
+            logger.debug("ADDRESSES EVENTS: ", addresses_events)
     except: 
-        logger.debug("Selecting contracts with events failed. No contracts with events?")
+        logger.debug("Selecting contracts with events failed.")
         addresses_events = list()
     # only CALLs have the characteristic "CALL" in the attribute "calltype"
     # The call came from outside the contract INTO the contract, so the contract address is in the attribute "to"
     try:  
-        addresses_calls = df_log[df_log["calltype"] == "CALL"]["to"].unique()
-        addresses_calls = list(addresses_calls)
+        if "calltype" in df_log.columns:
+            addresses_calls = df_log[df_log["calltype"] == "CALL"]["to"].dropna().unique().tolist()
     except: 
-        logger.debug("Selecting contracts with CALLs failed. No contracts with CALLs?")
+        logger.debug("Selecting contracts with CALLs failed.")
         addresses_calls = list()
     # Only DELEGATECALLs have the characteristic "DELEGATECALL" in the attribute "calltype"
     # The call came from outside the contract INTO the contract, so the contract address is in the attribute "to" 
     try: 
-        addresses_delegatecall = df_log[df_log["calltype"] == "DELEGATECALL"]["to"].unique()
-        addresses_delegatecall = list(addresses_delegatecall)
+        if "calltype" in df_log.columns:
+            addresses_delegatecall = df_log[df_log["calltype"] == "DELEGATECALL"]["to"].dropna().unique().tolist()
     except:
-        logger.debug("Selecting contracts with events failed. No contracts with DELEGATECALLs?")
+        logger.debug("Selecting contracts with events failed.")
         addresses_delegatecall = list()
 
     # Make one list of all addresses with relevant entries
@@ -279,7 +306,7 @@ def create_abi_dict(addresses, etherscan_api_key):
         
         logger.info(f"ABI dictionary: {len(verified_addresses)+len(non_verified_addresses)} of {len(addresses)} addresses. Number of valid ABIs: {len(dict_abi)}")
     
-    logger.info(f"{len(dict_abi)} contract ABI(s) retrieved {f} contract(s) without verified ABI(s)")
+    logger.info(f"{len(dict_abi)} contract ABI(s) retrieved. {f} contract(s) without verified ABI(s)")
     
     return dict_abi#, non_verified_addresses, verified_addresses
 
@@ -338,10 +365,11 @@ def decode_events(df_log, dict_abi):
     txs_event_not_decoded = list()
 
     # load fallback_abis
+    dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
     path = os.path.join(dir_path, 'config_custom_events.json')
     fallback_abis = load_event_definitions(path)
 
-    logger.info("Starting to decode events.")
+    logger.info(f"Starting to decode events, number of entries: {len(df_events_raw)}")
 
     # Each event already has a row assigned in df_events_raw. The encoded data is accessed by looping through the dataframe. 
     accumulated_data = []
@@ -443,7 +471,7 @@ def decode_events(df_log, dict_abi):
     return df_events#, txs_event_not_decoded, unknown_event_addresses
 
 
-# decoding ABIs could be decoded once in one go 
+# TODO: decoding ABIs could be decoded once in one go, and the function could be isolated 
 
 def decode_functions(df_log, dict_abi, node_url, calltype_list, include_zero_value_transactions, logging_string):
     """
@@ -495,10 +523,14 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, include_zero_val
     # Note that there is a lot if callvalue == 0 calls. They can also be decoded but for use cases chosen so far its just too much for an off-the shelf laptop to handle (in the current implementation)
     # The selected data will be decoded. 
     mask = df_log["calltype"].isin(calltype_list)
-    if include_zero_value_transactions == False:
-        mask_callvalue = df_log["callvalue"] != "0x0"
-    if include_zero_value_transactions == True:
-        mask_callvalue = df_log["callvalue"] == "0x0"
+    mask_zero = df_log["callvalue"].apply(lambda x: x == 0.0 or x == "0x0")
+    if include_zero_value_transactions:
+        # Select only rows with zero callvalue
+        mask_callvalue = mask_zero
+    else:
+        # Exclude rows with zero callvalue
+        mask_callvalue = ~mask_zero
+        
     df_function_raw = df_log[mask & mask_callvalue]
     
     # free up memory

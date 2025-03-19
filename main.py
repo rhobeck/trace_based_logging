@@ -1,15 +1,15 @@
-import raw_trace_retriever.get_transactions as get_transactions
-import raw_trace_retriever.get_txIndex as get_txIndex
-import raw_trace_retriever.trace_transformation as trace_transformation
-import raw_trace_retriever.create_relations as create_relations
-import raw_trace_retriever.helpers as helpers
-import trace_decoder.data_preparation as data_preparation
+import src.trace_based_logging.raw_trace_retriever.get_transactions as get_transactions
+import src.trace_based_logging.raw_trace_retriever.get_txIndex as get_txIndex
+import src.trace_based_logging.raw_trace_retriever.trace_transformation as trace_transformation
+import src.trace_based_logging.raw_trace_retriever.create_relations as create_relations
+import src.trace_based_logging.raw_trace_retriever.trace_retriever_utils as trace_retriever_utils
+import src.trace_based_logging.trace_decoder.data_preparation as data_preparation
 import pandas as pd
 import time
 import os 
 import pickle
 import json
-from logging_config import setup_logging
+from trace_based_logging.logging_config import setup_logging
 
 
 """
@@ -35,12 +35,12 @@ logger = setup_logging()
 class ExtractionState:
     def __init__(self, config):
         # Initialize state variables
-        self.contracts_lx = set(map(helpers.low, config["list_contracts"]))
+        self.contracts_lx = set(map(trace_retriever_utils.low, config["list_contracts"]))
         self.base_contract = next(iter(self.contracts_lx))
         self.contracts_dapp = self.contracts_lx.copy()
         self.all_transactions = set()
         self.trace_tree = pd.DataFrame()
-        self.non_dapp_contracts = set(map(helpers.low, config["list_predefined_non_dapp_contracts"]))
+        self.non_dapp_contracts = set(map(trace_retriever_utils.low, config["list_predefined_non_dapp_contracts"]))
 
 
 def load_config(config_path):
@@ -91,8 +91,8 @@ def build_node_url(config):
 def initialize_extraction_state(config):
     """Initialize the state required for transaction extraction."""
     # Only lower-case for easier string comparison
-    contracts_lx = list(map(helpers.low, config["list_contracts"])) 
-    non_dapp_contracts = list(map(helpers.low, config["list_predefined_non_dapp_contracts"]))
+    contracts_lx = list(map(trace_retriever_utils.low, config["list_contracts"])) 
+    non_dapp_contracts = list(map(trace_retriever_utils.low, config["list_predefined_non_dapp_contracts"]))
 
     return {
         "contracts_lx": set(contracts_lx),
@@ -332,7 +332,7 @@ def main():
     try:
         config = load_config(os.path.join(dir_path, 'config.json'))
         state = initialize_extraction_state(config)
-        helpers.check_socket(config["host"], config["port"])
+        trace_retriever_utils.check_socket(config["host"], config["port"])
         process_transactions(config, state)
         insert_transaction_index(config, state)
         save_trace_data(config, state, dir_path)

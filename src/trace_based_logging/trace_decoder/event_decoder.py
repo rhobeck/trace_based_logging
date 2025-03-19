@@ -1,6 +1,7 @@
-import trace_decoder.decoder as decoder
+from . import decoder
+# import trace_decoder.decoder as decoder
 import pandas as pd
-from logging_config import setup_logging
+from src.trace_based_logging.logging_config import setup_logging
 
 logger = setup_logging()
 
