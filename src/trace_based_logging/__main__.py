@@ -56,9 +56,8 @@ def main():
             
             df_log = data_preparation.base_transformation(state["trace_tree"], state["contracts_dapp"])
             del state["trace_tree"]
-            dict_abi = data_preparation.create_abi_dict(data_preparation.address_selection(df_log), config["etherscan_api_key"])
-            dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
             abi_path = os.path.join(dir_path, "resources", config["log_folder"], "decoding", f"dict_abi_{state['base_contract']}_{config['min_block']}_{config['max_block']}.pkl")
+            dict_abi = data_preparation.create_abi_dict(data_preparation.address_selection(df_log), config["etherscan_api_key"], abi_path)
             pickle.dump(dict_abi, open(abi_path, 'wb'))
             logger.info(f"Saved ABI dictionary at: {abi_path}")
             decode_all(df_log, state, config, dict_abi, build_node_url)

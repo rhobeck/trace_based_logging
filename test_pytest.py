@@ -263,7 +263,8 @@ def test_remove_predefined_contracts():
 def test_abi_retrieval():
     path = os.path.join(dir_path, 'tests', 'test_resources', 'addresses_6.pkl')
     addresses = pickle.load(open(path, 'rb'))
-    dict_abi = data_preparation.create_abi_dict(addresses, etherscan_api_key)
+    abi_path = "does_not_exist"
+    dict_abi = data_preparation.create_abi_dict(addresses, etherscan_api_key, abi_path)
     #assert(len(non_verified_addresses)==1)
     #assert(len(verified_addresses) == 5)
     assert(len(dict_abi) == 5)

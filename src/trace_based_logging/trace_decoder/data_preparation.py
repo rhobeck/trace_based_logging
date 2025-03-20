@@ -7,6 +7,7 @@ import requests
 import json
 from web3 import Web3, HTTPProvider
 import os
+import pickle
 from src.trace_based_logging.logging_config import setup_logging
 from . import event_decoder
 
@@ -229,7 +230,7 @@ def convert_hex_to_int(df_log, list_of_cols=["gas", "gasUsed", "callvalue"]):
     return df_log
 
 
-def create_abi_dict(addresses, etherscan_api_key):
+def create_abi_dict(addresses, etherscan_api_key, abi_path):
     """
     Retrieves the ABI (Application Binary Interface) for a list of contract addresses from Etherscan and categorizes them
     into verified and non-verified based on the availability of their source code.
@@ -257,56 +258,62 @@ def create_abi_dict(addresses, etherscan_api_key):
           a generic message upon failure without raising an exception, which might require refinement for better error 
           management and reporting.
     """
-
-    if not isinstance(addresses, list):
-        raise ValueError("The function input addresses must be a list.")
-
-    dict_abi = {}
-    non_verified_addresses = set()
-    verified_addresses = set()
-    f = 0
+   
+    try:
+        with open(abi_path, 'rb') as file:
+            dict_abi = pickle.load(file)
+        logger.info(f"ABI dictionary already exists and was loaded from: {abi_path}")
     
-    for contract_address_tmp in addresses: 
-        attempts = 0
-        # Three attempts to retrieve the ABI from the Etherscan API
-        while attempts < MAX_API_RETRIES:
-            try: 
-                api_key = etherscan_api_key
-                headers = {'Content-type': 'application/json'}
-                parameters = {
-                    "module": "contract",
-                    "action": "getabi",
-                    "address": contract_address_tmp,
-                    "apikey": api_key
-                }    
-                response_API = requests.get('https://api.etherscan.io/api', parameters, headers=headers)
-                response_json = response_API.json()
-                break
-            # Inexplicit exception
-            except:
-                attempts += 1
-                
-                logger.error(f"{str(attempts)} attempt(s) failed. Was the library 'requests' imported? {contract_address_tmp}. Retrying...")
-                
-                time.sleep(2)
-                response_json = {"result:"}
+    except: 
+        if not isinstance(addresses, list):
+            raise ValueError("The function input addresses must be a list.")
+
+        dict_abi = {}
+        non_verified_addresses = set()
+        verified_addresses = set()
+        f = 0
         
-        # check if the key "result" is in the JSON response, if not retry, then skip
+        for contract_address_tmp in addresses: 
+            attempts = 0
+            # Three attempts to retrieve the ABI from the Etherscan API
+            while attempts < MAX_API_RETRIES:
+                try: 
+                    api_key = etherscan_api_key
+                    headers = {'Content-type': 'application/json'}
+                    parameters = {
+                        "module": "contract",
+                        "action": "getabi",
+                        "address": contract_address_tmp,
+                        "apikey": api_key
+                    }    
+                    response_API = requests.get('https://api.etherscan.io/api', parameters, headers=headers)
+                    response_json = response_API.json()
+                    break
+                # Inexplicit exception
+                except:
+                    attempts += 1
+                    
+                    logger.error(f"{str(attempts)} attempt(s) failed. Was the library 'requests' imported? {contract_address_tmp}. Retrying...")
+                    
+                    time.sleep(2)
+                    response_json = {"result:"}
+            
+            # check if the key "result" is in the JSON response, if not retry, then skip
+            
+            # if the address has no verified source code, save the address 
+            if response_json["result"] == "Contract source code not verified":
+                f += 1
+                non_verified_addresses.add(contract_address_tmp)
+            # if the address has verified source code, save the ABI in a dictionary
+            else:
+                abi = json.loads(response_json["result"])
+                # verified_addresses is not necessary, as those addresses are also saved in the dict_abi keys
+                verified_addresses.add(contract_address_tmp)
+                dict_abi[contract_address_tmp] = abi
+            
+            logger.info(f"ABI dictionary: {len(verified_addresses)+len(non_verified_addresses)} of {len(addresses)} addresses. Number of valid ABIs: {len(dict_abi)}")
         
-        # if the address has no verified source code, save the address 
-        if response_json["result"] == "Contract source code not verified":
-            f += 1
-            non_verified_addresses.add(contract_address_tmp)
-        # if the address has verified source code, save the ABI in a dictionary
-        else:
-            abi = json.loads(response_json["result"])
-            # verified_addresses is not necessary, as those addresses are also saved in the dict_abi keys
-            verified_addresses.add(contract_address_tmp)
-            dict_abi[contract_address_tmp] = abi
-        
-        logger.info(f"ABI dictionary: {len(verified_addresses)+len(non_verified_addresses)} of {len(addresses)} addresses. Number of valid ABIs: {len(dict_abi)}")
-    
-    logger.info(f"{len(dict_abi)} contract ABI(s) retrieved. {f} contract(s) without verified ABI(s)")
+        logger.info(f"{len(dict_abi)} contract ABI(s) retrieved. {f} contract(s) without verified ABI(s)")
     
     return dict_abi#, non_verified_addresses, verified_addresses
 

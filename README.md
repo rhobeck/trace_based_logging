@@ -19,7 +19,7 @@ There are prerequisites for running the program:
 
 1. Clone the repository:
 ```console
-git clone [this project]
+git clone https://github.com/rhobeck/trace_based_logging/
 ```
 
 2. Install the required dependencies:
