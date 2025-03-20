@@ -51,9 +51,9 @@ def process_events(df_log, decode_flag, file_name_snippet, description, state, c
         state[file_name_snippet] = df_events
         save_decoded_data(state, config, file_name_snippet, dir_path)
         del df_events
-        return state
     else:
         logger.info(f"Skipping EVENTS for {description} (flag false).")
+    return state
 
 def process_calls(df_log, decode_flag, file_name_snippet, calltype_list, include_zero_value_transactions, logging_string, description, state, config, dict_abi, dir_path):
     from src.trace_based_logging.trace_decoder import data_preparation
@@ -70,9 +70,9 @@ def process_calls(df_log, decode_flag, file_name_snippet, calltype_list, include
         state[file_name_snippet] = df_functions
         save_decoded_data(state, config, file_name_snippet, dir_path)    
         del df_functions
-        return state
     else:
         logger.info(f"Skipping {logging_string} for {description} (flag false).")
+    return state
 
 def process_delegatecalls(df_log, decode_flag, file_name_snippet, calltype_list, include_zero_value_transactions, logging_string, description, state, config, dict_abi, dir_path):
     from src.trace_based_logging.trace_decoder import data_preparation
@@ -89,17 +89,8 @@ def process_delegatecalls(df_log, decode_flag, file_name_snippet, calltype_list,
         state[file_name_snippet] = df_delegate
         save_decoded_data(state, config, file_name_snippet, dir_path)   
         del df_delegate
-        return state
     else:
         logger.info(f"Skipping DELEGATECALLs for {description} (flag false).")
-
-def process_creations(df_log, dir_path, state, config, file_name_snippet):
-    logger.info("Saving CREATE-relations")
-    mask_create = df_log["calltype"].isin(["CREATE", "CREATE2"])
-    df_creations = df_log[mask_create]
-    state["creations"] = df_creations
-    save_decoded_data(state, config, file_name_snippet, dir_path)
-    del df_creations
     return state
 
 def process_creations(df_log, dir_path, state, config, file_name_snippet):
@@ -110,8 +101,6 @@ def process_creations(df_log, dir_path, state, config, file_name_snippet):
     save_decoded_data(state, config, file_name_snippet, dir_path)
     del df_creations
     return state
-
-
 
 def build_node_url(config):
     return f"{config['protocol']}{config['host']}:{config['port']}"

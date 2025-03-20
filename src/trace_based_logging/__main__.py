@@ -74,7 +74,7 @@ def main():
             RESOURCES_DIR = os.path.join(dir_path, "resources")
             LOG_FOLDER = config["log_folder"]
             transformation_augur.transform_augur_data(RESOURCES_DIR, LOG_FOLDER, state, config)
-            config["base_contract"] = state["base_contract"] # TODO: not a clean solution
+            config["base_contract"] = state["base_contract"] # TODO: assign base_contract to config in set-up phase
             del state
             log_construction_augur.build_log(RESOURCES_DIR, LOG_FOLDER, config)
         except Exception as e:
