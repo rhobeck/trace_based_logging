@@ -6,11 +6,24 @@
 import re
 from typing import Dict, List
 
-from eth_abi import decode_abi, decode_single
+try:
+    from eth_abi import decode_abi, decode_single
+except ImportError:  # eth_abi >= 4 renamed decode_abi -> decode and removed decode_single
+    from eth_abi import decode as decode_abi
+
+    def decode_single(typ, data):
+        return decode_abi([typ], data)[0]
 from eth_abi.exceptions import InsufficientDataBytes, NoEntriesFound, NonEmptyPaddingBytes
 from eth_hash.auto import keccak
 from eth_utils import to_checksum_address
 from hexbytes import HexBytes
+
+
+def _to_prefixed_hex(value) -> str:
+    """hexbytes >= 1.0 dropped the 0x prefix from HexBytes.hex(); topic-map keys and
+    decoded values are 0x-prefixed throughout this library, so normalize explicitly."""
+    hex_str = HexBytes(value).hex()
+    return hex_str if hex_str.startswith("0x") else "0x" + hex_str
 
 
 class ABIError(Exception):
@@ -125,7 +138,7 @@ def decode_log(log: Dict, topic_map: Dict) -> Dict:
     if not log["topics"]:
         raise EventError("Cannot decode an anonymous event")
 
-    key = HexBytes(log["topics"][0]).hex()
+    key = _to_prefixed_hex(log["topics"][0])
     if key not in topic_map:
         raise UnknownEvent("Event topic is not present in given ABI")
     abi = topic_map[key]
@@ -175,14 +188,14 @@ def decode_logs(logs: List, topic_map: Dict, allow_undecoded: bool = False) -> L
     events = []
 
     for item in logs:
-        topics = [HexBytes(i).hex() for i in item["topics"]]
+        topics = [_to_prefixed_hex(i) for i in item["topics"]]
         if not topics or topics[0] not in topic_map:
             if not allow_undecoded:
                 raise UnknownEvent("Log contains undecodable event")
             event = {
                 "name": None,
                 "topics": topics,
-                "data": HexBytes(item["data"]).hex(),
+                "data": _to_prefixed_hex(item["data"]),
                 "decoded": False,
                 "address": to_checksum_address(item["address"]),
             }
@@ -248,7 +261,7 @@ def decode_traceTransaction(
             offset = int(step["stack"][-1], 16)
             length = int(step["stack"][-2], 16)
             topic_len = int(step["op"][-1])
-            topics = [HexBytes(i).hex() for i in step["stack"][-3 : -3 - topic_len : -1]]
+            topics = [_to_prefixed_hex(i) for i in step["stack"][-3 : -3 - topic_len : -1]]
         except KeyError:
             raise StructLogError("StructLog has no stack")
         except (IndexError, TypeError):
@@ -354,14 +367,13 @@ def _decode(inputs: List, topics: List, data: str) -> List:
                 value = decode_single(i["type"], encoded)
             except (InsufficientDataBytes, NoEntriesFound, OverflowError):
                 # an array or other data type that uses multiple slots
-                result[-1].update({"value": encoded.hex(), "decoded": False})
+                result[-1].update({"value": _to_prefixed_hex(encoded), "decoded": False})
                 continue
         else:
             value = decoded.pop()
 
         if isinstance(value, bytes):
-            # converting to `HexBytes` first ensures the leading `0x`
-            value = HexBytes(value).hex()
+            value = _to_prefixed_hex(value)
         result[-1].update({"value": value, "decoded": True})
 
     return result

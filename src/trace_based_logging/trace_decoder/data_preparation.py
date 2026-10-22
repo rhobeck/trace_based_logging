@@ -1,14 +1,29 @@
+"""Decoding of the trace operations: the raw input of calls and delegated calls and
+the topics and data of log entries are decoded with the ABI of the contract that was
+called or that emitted the entry (Section 6 of the paper). ABIs come from Etherscan
+and are cached across runs; log entries that the contract's ABI does not cover are
+tried against the standard ERC event signatures and the custom events in
+config_custom_events.json.
+
+Functions: load_data, base_transformation, address_selection,
+restrict_to_decoded_categories, convert_hex_to_int, create_abi_dict, decode_events,
+decode_functions, process_abi, build_contract_objects.
+"""
 import numpy as np
 import pandas as pd
-# import trace_decoder.event_decoder as event_decoder
 import datetime
+import re
+import threading
 import time
 import requests
 import json
-from web3 import Web3, HTTPProvider
+from concurrent.futures import ThreadPoolExecutor
+from web3 import Web3
 import os
 import pickle
 from src.trace_based_logging.logging_config import setup_logging
+from src.trace_based_logging import storage
+from src.trace_based_logging.raw_trace_retriever.trace_retriever_utils import make_web3
 from . import event_decoder
 
 
@@ -16,6 +31,35 @@ from . import event_decoder
 logger = setup_logging()
 
 MAX_API_RETRIES = 5
+ETHERSCAN_V2_URL = "https://api.etherscan.io/v2/api"
+# conservative default; the limiter also reads the actual tier from Etherscan's
+# rate-limit message ("... (3/sec)") and slows itself accordingly
+ETHERSCAN_REQUESTS_PER_SECOND = 2.5
+# rate-limit responses are pacing feedback, not errors: they get their own generous
+# retry budget instead of consuming the MAX_API_RETRIES error budget
+RATE_LIMIT_MAX_RETRIES = 30
+
+
+class _RateLimiter:
+    """Simple cross-thread minimum-interval limiter."""
+
+    def __init__(self, requests_per_second):
+        self._interval = 1.0 / requests_per_second
+        self._lock = threading.Lock()
+        self._next_at = 0.0
+
+    def wait(self):
+        with self._lock:
+            now = time.monotonic()
+            delay = self._next_at - now
+            self._next_at = max(now, self._next_at) + self._interval
+        if delay > 0:
+            time.sleep(delay)
+
+    def slow_to(self, requests_per_second):
+        """Never speed up; adopt a slower rate when the server names its limit."""
+        with self._lock:
+            self._interval = max(self._interval, 1.0 / requests_per_second)
 
 # change the default look-up path to the directory above
 dir_path = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..'))
@@ -32,11 +76,20 @@ def low(x):
 def load_data(config, state, file_name_snippet):
     dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
     base_contract = state["base_contract"]
-    csv_path = os.path.join(dir_path, "resources", config["log_folder"], "extraction", f"{file_name_snippet}_{base_contract}_{config['min_block']}_{config['max_block']}.csv")
-    pkl_path = os.path.join(dir_path, "resources", config["log_folder"], "extraction", f"{file_name_snippet}_{base_contract}_{config['min_block']}_{config['max_block']}.pkl")
+    base = os.path.join(dir_path, "resources", config["log_folder"], "extraction",
+                        f"{file_name_snippet}_{base_contract}_{config['min_block']}_{config['max_block']}")
+    parquet_path, pkl_path, csv_path = base + ".parquet", base + ".pkl", base + ".csv"
 
-    # Try to load the DataFrame
-    if os.path.exists(pkl_path):
+    # Parquet is the canonical form; pickle and CSV are still read when present.
+    if os.path.exists(parquet_path):
+        data = pd.read_parquet(parquet_path)
+        logger.info(f"Loaded {file_name_snippet} from parquet file.")
+        # the DApp contract set is stored as a one-column table; return it as the set
+        # the downstream code expects
+        if list(data.columns) == ["address"]:
+            return set(data["address"])
+        return data
+    elif os.path.exists(pkl_path):
         data = pd.read_pickle(pkl_path)
         logger.info(f"Loaded {file_name_snippet} from pickle file.")
         return data
@@ -45,40 +98,24 @@ def load_data(config, state, file_name_snippet):
         logger.info(f"Loaded {file_name_snippet} from CSV file.")
         return data
     else:
-        raise FileNotFoundError("Neither the pickle file nor the CSV file exists.")
+        raise FileNotFoundError(f"No parquet, pickle or CSV file found for {base}.")
 
 
 def base_transformation(df_log, contracts_dapp):
     """
-    Performs basic data transformations on a DataFrame of blockchain logs. 
-    This includes resetting the index, separating and cleaning 'from' and 'address' fields from ordering attachments,
-    formatting timestamps, converting addresses to lowercase, and renaming columns to avoid conflicts.
+    Performs the basic transformations of the trace operations before decoding:
+    resets the index, converts 'timeStamp' from unix seconds to a UTC datetime,
+    lowercases the 'to', 'from' and 'address' fields, renames 'type' and 'value' to
+    'calltype' and 'callvalue', and flags the entries whose 'address' is a DApp
+    contract.
 
     Args:
-        df_log (pd.DataFrame): A DataFrame containing blockchain log entries. Expected to have 'from', 'address',
-                               and 'timeStamp' columns among others.
-        contracts_dapp (set or list): A collection of contract addresses that are identified as belonging to the DApp.
+        df_log (pd.DataFrame): The trace operations; must have 'from', 'to',
+                               'address' and 'timeStamp' columns.
+        contracts_dapp (set or list): The addresses of the DApp contracts.
 
     Returns:
-        pd.DataFrame: The transformed DataFrame with cleaned and formatted data suitable for further analysis.
-
-    Detailed Operations:
-        - Resets the DataFrame index for continuity.
-        - Separates order IDs from 'from' and 'address' fields, if appended, and calculates a combined order of execution.
-        - Cleans up the 'from' and 'address' fields by removing any ordering attachment.
-        - Formats 'timeStamp' to a datetime object from a unix timestamp and ensures proper datetime formatting.
-        - Converts 'to', 'from', and 'address' fields to lowercase to maintain consistency.
-        - Renames 'type' and 'value' columns to 'calltype' and 'callvalue' respectively to avoid naming conflicts.
-        - Flags entries where the 'address' field matches any of the DApp contract addresses.
-        - Prints timestamps indicating the start and completion of the data transformation process.
-
-    Notes:
-        - The function explicitly expects 'from', 'address', and 'timeStamp' fields in the input DataFrame.
-        - The transformation process is designed for preparation of log data for further processing and analysis,
-          particularly in identifying DApp-related activities.
-        - The 'timeStamp' field is initially converted to an integer, formatted to a string representation of a datetime,
-          and then converted back to a datetime object for consistency in handling date and time information.
-        - Addresses are converted to lowercase to ensure uniformity in address representation.
+        pd.DataFrame: The transformed DataFrame.
     """
     logger.info("Start basic data transformation.")
     
@@ -98,23 +135,11 @@ def base_transformation(df_log, contracts_dapp):
     df_log.reset_index(drop=True, inplace=True)
 
     try:
-        # df_txs_lx["timeStamp"] = df_txs_lx["timeStamp"].apply(lambda x: int(x))
-        # seperating addresses and order IDs
-        # df_log["order_calls"] = df_log["from"].apply(lambda x: int(x[43:]) if isinstance(x, str) else 0)
-        # df_log["order_events"] = df_log["address"].apply(lambda x: int(x[43:]) if isinstance(x, str) else 0)
-        # df_log["order_in_trace"] = df_log["order_calls"] + df_log["order_events"]
-        # df_log.drop(["order_calls", "order_events"], axis=1, inplace=True)
-
-        # delete the ordering attachement from "from" and "address"
-        # df_log["from"] = df_log["from"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
-        # df_log["address"] = df_log["address"].apply(lambda x: x[:42] if isinstance(x, str) else np.nan)
-
-        # timestamp formatting got lost
+        # Block timestamps are unix seconds and are converted to UTC datetimes, so
+        # absolute times do not depend on the machine the pipeline runs on.
         if "timeStamp" in df_log.columns:
-            df_log["timeStamp"] = df_log["timeStamp"].apply(lambda x: int(x))
-            df_log["timeStamp"] = df_log["timeStamp"].apply(lambda x: datetime.datetime.fromtimestamp(x).strftime('%d.%m.%Y  %H:%M:%S.%f'))
-            df_log["timeStamp"] = df_log["timeStamp"].apply(lambda x: datetime.datetime.strptime(x, '%d.%m.%Y  %H:%M:%S.%f'))
-        else: 
+            df_log["timeStamp"] = pd.to_datetime(pd.to_numeric(df_log["timeStamp"]), unit="s")
+        else:
             logger.info("Base transformation: No 'timeStamp' found in the data.")
         # use the order to attach the int as milliseconds to the timestamp, so that mining algorithm can create order by timestamp
         # df_log["milliseconds"] = pd.to_timedelta(df_log["order"], unit="ms")
@@ -203,6 +228,34 @@ def address_selection(df_log):
     return addresses#, addresses_events, addresses_calls, addresses_delegatecall
 
 
+# config switches of the non-DApp categories that decoding uses ABIs for (creations need none)
+NON_DAPP_DECODING_FLAGS = ("non_dapp_events", "non_dapp_calls", "non_dapp_zero_value_calls",
+                           "non_dapp_delegatecalls")
+
+
+def restrict_to_decoded_categories(addresses, contracts_dapp, config):
+    """
+    Keep only the addresses whose ABIs decoding will use. With every non-DApp category
+    switched off, only DApp contracts are decoded (decoding.decode_all), so ABIs of
+    other addresses would be fetched and never used; otherwise all addresses are kept.
+
+    Args:
+        addresses (list): Lower-cased addresses from address_selection.
+        contracts_dapp (iterable): The DApp contract addresses.
+        config (dict): The flat configuration with the non-DApp output switches.
+
+    Returns:
+        list: The addresses to look up ABIs for.
+    """
+    if any(config[flag] for flag in NON_DAPP_DECODING_FLAGS):
+        return addresses
+    dapp = set(map(low, contracts_dapp))
+    selected = [a for a in addresses if a in dapp]
+    logger.info(f"Non-DApp decoding switched off: looking up ABIs for {len(selected)} DApp "
+                f"contracts, skipping {len(addresses) - len(selected)} other addresses.")
+    return selected
+
+
 def convert_hex_to_int(df_log, list_of_cols=["gas", "gasUsed", "callvalue"]):
     """
     Converts hex values in a DataFrame to integers.
@@ -230,92 +283,116 @@ def convert_hex_to_int(df_log, list_of_cols=["gas", "gasUsed", "callvalue"]):
     return df_log
 
 
-def create_abi_dict(addresses, etherscan_api_key, abi_path):
+def create_abi_dict(addresses, etherscan_api_key, abi_path=None, cache_path=None,
+                    chainid=1, requests_per_second=ETHERSCAN_REQUESTS_PER_SECOND,
+                    max_workers=4):
+    """Retrieve contract ABIs from Etherscan (V2 getabi) for the given addresses.
+
+    Returns a dict mapping lowercase address -> parsed ABI for every address with
+    verified source code. "Contract source code not verified" is a data outcome and
+    is recorded as such; API errors (rate limit, invalid key, transport) are retried
+    and then raised, never recorded as an answer.
+
+    Caching: results are persisted incrementally to cache_path (parquet) as they
+    arrive — verified ABIs *and* not-verified markers — so interrupted runs resume
+    and reruns skip everything already known. abi_path names a whole-dictionary
+    pickle: if it exists, it is loaded and returned unchanged.
     """
-    Retrieves the ABI (Application Binary Interface) for a list of contract addresses from Etherscan and categorizes them
-    into verified and non-verified based on the availability of their source code.
-
-    Args:
-        addresses (list or set): A collection of contract addresses for which to retrieve the ABIs.
-
-    Returns:
-        tuple: A tuple containing three elements:
-            - dict_abi (dict): A dictionary mapping contract addresses to their ABIs for contracts with verified source code.
-            - non_verified_addresses (set): A set containing contract addresses without verified source code.
-            - verified_addresses (set): A set containing contract addresses with verified source code.
-
-    Overview:
-        The function iterates through each provided contract address, making up to three attempts to retrieve the ABI from
-        the Etherscan API. If the source code for a contract address is not verified, the address is added to the 
-        `non_verified_addresses` set. If the source code is verified, the ABI is parsed from the API response and stored 
-        in the `dict_abi` dictionary with the contract address as the key. The function also logs the progress of ABI 
-        retrieval, including the number of addresses processed and the count of verified versus non-verified addresses.
-
-    Notes:
-        - The function assumes that the Etherscan API's response structure is consistent and that an ABI can be directly
-          parsed from the `result` field of a successful API response.
-        - Error handling is implemented via retry logic, with a brief pause between attempts. However, the function logs
-          a generic message upon failure without raising an exception, which might require refinement for better error 
-          management and reporting.
-    """
-   
-    try:
+    if abi_path and os.path.exists(abi_path):
         with open(abi_path, 'rb') as file:
             dict_abi = pickle.load(file)
         logger.info(f"ABI dictionary already exists and was loaded from: {abi_path}")
-    
-    except: 
-        if not isinstance(addresses, list):
-            raise ValueError("The function input addresses must be a list.")
+        return dict_abi
 
-        dict_abi = {}
-        non_verified_addresses = set()
-        verified_addresses = set()
-        f = 0
-        
-        for contract_address_tmp in addresses: 
-            attempts = 0
-            # Three attempts to retrieve the ABI from the Etherscan API
-            while attempts < MAX_API_RETRIES:
-                try: 
-                    api_key = etherscan_api_key
-                    headers = {'Content-type': 'application/json'}
-                    parameters = {
-                        "module": "contract",
-                        "action": "getabi",
-                        "address": contract_address_tmp,
-                        "apikey": api_key
-                    }    
-                    response_API = requests.get('https://api.etherscan.io/api', parameters, headers=headers)
-                    response_json = response_API.json()
-                    break
-                # Inexplicit exception
-                except:
-                    attempts += 1
-                    
-                    logger.error(f"{str(attempts)} attempt(s) failed. Was the library 'requests' imported? {contract_address_tmp}. Retrying...")
-                    
-                    time.sleep(2)
-                    response_json = {"result:"}
-            
-            # check if the key "result" is in the JSON response, if not retry, then skip
-            
-            # if the address has no verified source code, save the address 
-            if response_json["result"] == "Contract source code not verified":
-                f += 1
-                non_verified_addresses.add(contract_address_tmp)
-            # if the address has verified source code, save the ABI in a dictionary
-            else:
-                abi = json.loads(response_json["result"])
-                # verified_addresses is not necessary, as those addresses are also saved in the dict_abi keys
-                verified_addresses.add(contract_address_tmp)
-                dict_abi[contract_address_tmp] = abi
-            
-            logger.info(f"ABI dictionary: {len(verified_addresses)+len(non_verified_addresses)} of {len(addresses)} addresses. Number of valid ABIs: {len(dict_abi)}")
-        
-        logger.info(f"{len(dict_abi)} contract ABI(s) retrieved. {f} contract(s) without verified ABI(s)")
-    
-    return dict_abi#, non_verified_addresses, verified_addresses
+    addresses = [str(a).lower() for a in addresses]
+    known = {}
+    if cache_path and os.path.exists(cache_path):
+        cached = pd.read_parquet(cache_path)
+        known = {r.address: (bool(r.verified), r.abi) for r in cached.itertuples()}
+        logger.info(f"ABI cache: {len(known)} known addresses loaded from {cache_path}")
+
+    missing = [a for a in addresses if a not in known]
+    logger.info(f"ABI retrieval: {len(addresses)} requested, "
+                f"{len(addresses) - len(missing)} cached, {len(missing)} to fetch")
+
+    if missing:
+        limiter = _RateLimiter(requests_per_second)
+        thread_local = threading.local()
+        lock = threading.Lock()
+        fetched = [0]
+
+        def get_session():
+            session = getattr(thread_local, "session", None)
+            if session is None:
+                session = requests.Session()
+                thread_local.session = session
+            return session
+
+        def flush():
+            if cache_path:
+                df = pd.DataFrame(
+                    [{"address": a, "verified": v, "abi": abi_text}
+                     for a, (v, abi_text) in known.items()])
+                storage.write_atomic_parquet(cache_path, df)
+
+        def fetch(address):
+            parameters = {"chainid": chainid, "module": "contract", "action": "getabi",
+                          "address": address, "apikey": etherscan_api_key}
+            attempt = 0
+            rate_limit_hits = 0
+            while attempt < MAX_API_RETRIES:
+                limiter.wait()
+                try:
+                    payload = get_session().get(ETHERSCAN_V2_URL, params=parameters,
+                                                timeout=30).json()
+                except (requests.exceptions.RequestException, ValueError) as e:
+                    attempt += 1
+                    logger.error(f"ABI request error for {address} "
+                                 f"(attempt {attempt}/{MAX_API_RETRIES}): {e}")
+                    time.sleep(attempt)
+                    continue
+                status, result = payload.get("status"), payload.get("result")
+                if status == "1":
+                    return address, True, result            # verified: ABI JSON string
+                if status == "0" and isinstance(result, str) \
+                        and "not verified" in result.lower():
+                    return address, False, ""               # data outcome, cached
+                text = str(result)
+                if "rate limit" in text.lower():
+                    # pacing feedback: adapt to the tier the server names, retry
+                    # without consuming the error budget
+                    rate_limit_hits += 1
+                    if rate_limit_hits > RATE_LIMIT_MAX_RETRIES:
+                        raise RuntimeError(f"Persistent Etherscan rate limiting for "
+                                           f"{address} ({rate_limit_hits} responses)")
+                    tier = re.search(r"\((\d+(?:\.\d+)?)\s*/\s*sec\)", text)
+                    if tier:
+                        limiter.slow_to(float(tier.group(1)) * 0.8)
+                    time.sleep(0.5 + 0.25 * rate_limit_hits)
+                    continue
+                attempt += 1
+                logger.error(f"Etherscan non-success for {address}: "
+                             f"{text[:100]!r} — retrying")
+                time.sleep(attempt)
+            raise RuntimeError(f"ABI retrieval failed for {address} after "
+                               f"{MAX_API_RETRIES} attempts")
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            for address, verified, abi_text in pool.map(fetch, missing):
+                with lock:
+                    known[address] = (verified, abi_text)
+                    fetched[0] += 1
+                    if fetched[0] % 200 == 0:
+                        flush()
+                        n_verified = sum(1 for v, _ in known.values() if v)
+                        logger.info(f"ABI retrieval: {fetched[0]}/{len(missing)} fetched "
+                                    f"({n_verified} verified so far)")
+        flush()
+
+    dict_abi = {a: json.loads(known[a][1]) for a in addresses if known[a][0]}
+    logger.info(f"{len(dict_abi)} contract ABI(s) available; "
+                f"{len(addresses) - len(dict_abi)} without verified ABI")
+    return dict_abi
 
 def decode_events(df_log, dict_abi):
     """
@@ -361,12 +438,18 @@ def decode_events(df_log, dict_abi):
     df_events_raw = df_log[~df_log["address"].isna()]
     df_events_raw.reset_index(drop = True, inplace = True)
 
+    # A parquet round-trip turns the topics lists into numpy arrays, whose truth
+    # value is ambiguous inside the vendored decoder — normalize back to lists.
+    df_events_raw["topics"] = df_events_raw["topics"].map(
+        lambda t: list(t) if t is not None and not isinstance(t, list) and hasattr(t, "__iter__") else t)
+
     # free up memory
     del df_log
-    
+
     unknown_event_count = 0
     
     max_row = len(df_events_raw)
+    progress_step = max(1, max_row // 10)
 
     unknown_event_addresses = set()
     txs_event_not_decoded = list()
@@ -375,6 +458,12 @@ def decode_events(df_log, dict_abi):
     dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
     path = os.path.join(dir_path, 'config_custom_events.json')
     fallback_abis = load_event_definitions(path)
+
+    # Topic maps are computed once per contract ABI and once for the fallback ABIs;
+    # recomputing them per row (keccak over every event signature) was the dominant
+    # cost of this loop.
+    topic_map_cache = event_decoder.build_topic_maps(dict_abi)
+    fallback_topic_maps = event_decoder.build_fallback_topic_maps(fallback_abis)
 
     logger.info(f"Starting to decode events, number of entries: {len(df_events_raw)}")
 
@@ -387,7 +476,9 @@ def decode_events(df_log, dict_abi):
         try: 
             
             # Here the decoding happens
-            decoded_event = event_decoder.event_decoder(address, topics, data, dict_abi, fallback_abis)
+            decoded_event = event_decoder.event_decoder(
+                address, topics, data, dict_abi, fallback_abis,
+                topic_map_cache=topic_map_cache, fallback_topic_maps=fallback_topic_maps)
             
             # "name" will be the name of the event
             name = decoded_event["name"]
@@ -401,15 +492,20 @@ def decode_events(df_log, dict_abi):
             for j in range(len(decoded_event["data"])):
                 colName = decoded_event["data"][j]["name"]
                 value = decoded_event["data"][j]["value"]
+                # bare ints as exact decimal strings (see decode_functions): avoids
+                # float64 column coercion and the resulting precision loss
+                if isinstance(value, int) and not isinstance(value, bool):
+                    value = str(value)
                 colNames.append(colName)
                 values.append(value)
 
             # Existing data in the dataframe df_events_raw (e.g., on the trace) is reused in the new dataframe
             trace_data_values = [
                 row["timeStamp"], row["tracePos"], row["tracePosDepth"],
-                row["hash"], row["blockNumber"], row["transactionIndex"] 
+                row["hash"], row["blockNumber"], row["transactionIndex"],
+                row.get("flag_reverted")
                 ]
-            trace_data_colNames = ["timeStamp", "tracePos", "tracePosDepth", "hash", "blockNumber", "transactionIndex"]
+            trace_data_colNames = ["timeStamp", "tracePos", "tracePosDepth", "hash", "blockNumber", "transactionIndex", "flag_reverted"]
 
             # Create a list with the data that was available
             # 1. now decoded name of the event parameter as column name
@@ -437,33 +533,18 @@ def decode_events(df_log, dict_abi):
             row_data = dict(zip(columns, data))
             accumulated_data.append(row_data)
 
-        # Not so ideal error handling
-        except NameError:
-            logger.debug("Failed to build topic map")
-            txs_event_not_decoded.append(row["hash"])
-            data = list(row)
-            columns = list(df_events_raw.columns.values)
-            row_data = dict(zip(columns, data))
-            accumulated_data.append(row_data)
-            unknown_event_count += 1
-        except:
+        except Exception:
+            # event not decodable with any available ABI: keep the raw row
             unknown_event_addresses.add(row["address"])
             unknown_event_count += 1
-            logger.debug(f"Event topic is not present in given ABIs {row['hash']}")
-            txs_event_not_decoded.append(row["hash"])        
+            logger.debug(f"Event not decodable with available ABIs: {row['hash']}")
+            txs_event_not_decoded.append(row["hash"])
             columns = list(df_events_raw.columns.values)
-            data = list(row)
-            row_data = dict(zip(columns, data))
+            row_data = dict(zip(columns, list(row)))
             accumulated_data.append(row_data)
 
-        #ts = datetime.datetime.fromtimestamp(time.time()).strftime('%d-%m-%Y %H:%M:%S')
-        #print(ts, "Event decoding: ", index, " out of ", len(df_events_raw), " events decoded.")
-        
-        # Intermediate logging in 10% steps of the loop range to report on progress
-        if index != 0:
-            state = round(max_row, -1) / index
-            if state in [100/10,100/20,100/30,100/40,100/50,100/60,100/70,100/80,100/90]:
-                logger.info(f"Events decoding: {index} out of {max_row} events decoded.")
+        if (index + 1) % progress_step == 0:
+            logger.info(f"Events decoding: {index + 1} out of {max_row} events decoded.")
             
     logger.info(f"Events decoding: DONE. {unknown_event_count} unknown events occurred. Now building dataframe.")
     
@@ -480,7 +561,13 @@ def decode_events(df_log, dict_abi):
 
 # TODO: decoding ABIs could be decoded once in one go, and the function could be isolated 
 
-def decode_functions(df_log, dict_abi, node_url, calltype_list, include_zero_value_transactions, logging_string):
+def zero_value_mask(callvalue):
+    """The zero-value test of the category split, in one module-owned place
+    (tolerates both the raw '0x0' form and the int form after convert_hex_to_int)."""
+    return callvalue.apply(lambda x: x == 0.0 or x == "0x0")
+
+
+def decode_functions(df_log, dict_abi, node_url, calltype_list, include_zero_value_transactions, logging_string, contract_objects=None):
     """
     Decodes function call data from Ethereum transaction logs using the contract ABIs. It filters transactions based
     on specified call types and non-zero Ether transfer values, then attempts to decode each transaction's input data.
@@ -491,6 +578,8 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, include_zero_val
         dict_abi (dict): A dictionary mapping contract addresses (as lowercase hex strings) to their respective ABIs.
         node_url (str): The URL of the Ethereum node used to connect via Web3.
         calltype_list (list): A list of call types (e.g., ['CALL', 'DELEGATECALL']) to filter the transactions by.
+        include_zero_value_transactions (bool): True selects calls without Ether transfer, False calls with Ether
+                               transfer, None every call (used for DELEGATECALLs, which have no Ether transfer of their own).
 
     Raises:
         ValueError: If input types for `df_log`, `dict_abi`, or `calltype_list` are not as expected.
@@ -530,8 +619,12 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, include_zero_val
     # Note that there is a lot if callvalue == 0 calls. They can also be decoded but for use cases chosen so far its just too much for an off-the shelf laptop to handle (in the current implementation)
     # The selected data will be decoded. 
     mask = df_log["calltype"].isin(calltype_list)
-    mask_zero = df_log["callvalue"].apply(lambda x: x == 0.0 or x == "0x0")
-    if include_zero_value_transactions:
+    mask_zero = zero_value_mask(df_log["callvalue"])
+    if include_zero_value_transactions is None:
+        # DELEGATECALLs are not annotated with ETH transfers, they propagate the value from the parent scope (Section 7).
+        # The category holds every DELEGATECALL, whatever value the client reports for the frame.
+        mask_callvalue = pd.Series(True, index=df_log.index)
+    elif include_zero_value_transactions:
         # Select only rows with zero callvalue
         mask_callvalue = mask_zero
     else:
@@ -553,20 +646,16 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, include_zero_val
 
     logger.info(f"ABI decoding: {len(dict_abi)} ABIs to decode.")
     
-    # Prepare contract objects and format the ABI data for decoding 
-    contract_objects = {}
-    for address in dict_abi.keys():
-        try: 
-            address = address.lower()
-            abi = dict_abi[address]
-            contract_objects[address.lower()] = process_abi(abi, address, node_url)
-        except Exception as e: 
-            logger.error(f"Failed to process ABI for address {address}: {e}")
-            addresses_noAbi.add(address)
+    # Contract objects are built once per run and shared across the eight decode
+    # passes (see build_contract_objects); building here remains for direct calls.
+    if contract_objects is None:
+        contract_objects, failed = build_contract_objects(dict_abi, node_url)
+        addresses_noAbi.update(failed)
 
     logger.info(f"Function decoding starting for {str(calltype_list)}, number of entries: {len(df_function_raw)}")
     
     max_row = len(df_function_raw)
+    progress_step = max(1, max_row // 10)
     start = time.time()
     accumulated_data = []
 
@@ -574,11 +663,8 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, include_zero_val
     for index, row in df_function_raw.iterrows():
         
         
-        # Intermediate logging in 10% steps of the loop range to report on progress
-        if index != 0:
-            state = round(max_row, -1) / index
-            if state in [100/10,100/20,100/30,100/40,100/50,100/60,100/70,100/80,100/90]:
-                logger.info(f"Function decoding: {logging_string} {str(calltype_list)}, {index} out of {max_row} function calls decoded. Decoding failed for {unknown_functions_count}")
+        if (index + 1) % progress_step == 0:
+            logger.info(f"Function decoding: {logging_string} {str(calltype_list)}, {index + 1} out of {max_row} function calls decoded. Decoding failed for {unknown_functions_count}")
 
         
         # Select the address of the contract the function was called in ("to") and the function input data to decode ("input")
@@ -636,6 +722,11 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, include_zero_val
                 if colName == "from":
                     colName = "from_function_internal"
                 value = func_params[item]
+                # bare ints as exact decimal strings: a single missing value in a
+                # chunk otherwise coerces the whole column to float64 (silent
+                # precision loss above 2**53 wei)
+                if isinstance(value, int) and not isinstance(value, bool):
+                    value = str(value)
                 colNames.append(colName)
                 values.append(value)
 
@@ -644,11 +735,12 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, include_zero_val
                                     row["gas"], row["gasUsed"],
                                     row["output"], row["callvalue"],
                                     row["calltype"], row["hash"],
-                                    row["timeStamp"], row["tracePos"], 
+                                    row["timeStamp"], row["tracePos"],
                                     row["tracePosDepth"], row["blockNumber"],
-                                    row["transactionIndex"]
+                                    row["transactionIndex"],
+                                    row.get("flag_reverted")
                                     ]
-            trace_data_colNames = ["from", "to", "gas", "gasUsed", "output", "callvalue", "calltype", "hash", "timeStamp", "tracePos", "tracePosDepth", "blockNumber", "transactionIndex"]
+            trace_data_colNames = ["from", "to", "gas", "gasUsed", "output", "callvalue", "calltype", "hash", "timeStamp", "tracePos", "tracePosDepth", "blockNumber", "transactionIndex", "flag_reverted"]
 
             # Create a list with the data that is available 
             # 1. name of the object as function name
@@ -711,6 +803,16 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, include_zero_val
         start_index = split_indices[i]
         end_index = split_indices[i + 1]
         segment_data = accumulated_data[start_index:end_index]
+        # Unbounded integer columns are emitted as exact decimal strings BEFORE
+        # frame construction: a single missing value would otherwise coerce the
+        # whole column to float64 (silent precision loss above 2**53 wei), and a
+        # single value above 2**63 would make the persisted dtype flip per chunk.
+        # The transformation's int(x, 0) parses decimal strings losslessly.
+        for row_data in segment_data:
+            for col in ("gas", "gasUsed", "callvalue"):
+                v = row_data.get(col)
+                if v is not None and not isinstance(v, str) and pd.notna(v):
+                    row_data[col] = str(int(v))
         segment_df = pd.DataFrame(segment_data)
         df_segments.append(segment_df)  # Append segment to the list
 
@@ -732,46 +834,32 @@ def decode_functions(df_log, dict_abi, node_url, calltype_list, include_zero_val
     logger.debug(f"Time lapsed for decoding *CALL data {(end-start)}")
     return df_function#, addresses_not_dapp, txs_function_not_decoded, addresses_noAbi
 
-def process_abi(abi, contract_address_tmp, node_url):
+def process_abi(abi, contract_address_tmp, w3_or_node_url):
+    """Initialize a web3 contract object for decoding function inputs.
+
+    Accepts either a connected Web3 instance or a node URL; passing a shared instance
+    avoids reconnecting per contract. ABIs are passed to web3 as parsed JSON.
     """
-    Processes ABI data for a given contract address and initializes a contract object using Web3.
+    w3 = w3_or_node_url if hasattr(w3_or_node_url, "eth") else make_web3(w3_or_node_url)
+    if isinstance(abi, str):
+        abi = json.loads(abi)
+    address_checksum = Web3.to_checksum_address(contract_address_tmp)
+    return w3.eth.contract(address=address_checksum, abi=abi)
 
-    Args:
-        abi (str or dict): The ABI of the contract, either as a JSON string or a dictionary.
-        contract_address_tmp (str): The contract address in hex format.
-        node_url (str): The URL of the Ethereum node to connect to.
 
-    Returns:
-        web3.eth.Contract: A Web3 contract object initialized with the given ABI and address.
+def build_contract_objects(dict_abi, node_url):
+    """Build the web3 contract objects for all ABIs once, shared across the decode
+    passes (they were previously rebuilt for each of the eight passes).
 
-    Raises:
-        ValueError: If the ABI or contract address is invalid.
-        ConnectionError: If there is a problem connecting to the node URL.
+    Returns (contract_objects, failed_addresses).
     """
-    try: 
-        # format abi output, there are some symbols making the output harder to process
-        abi = str(abi)
-        abi = abi.replace("'", "\"")
-        abi = abi.replace(" ", "")
-        abi = abi.replace("False", "false")
-        abi = abi.replace("True", "true")
-
-        w3 = Web3(Web3(HTTPProvider(node_url)))
-        if not w3.isConnected():
-                raise ConnectionError(f"Unable to connect to node at {node_url}")
-
-        # format addresses to "checksum" (some letters are capitalized)
-        address_checksum = Web3.toChecksumAddress(contract_address_tmp)
-        #address_checksum = address_checksum.lower()
-        #    try:
-        contract = w3.eth.contract(address=address_checksum, abi=abi)
-        return contract
-    except ValueError as e:
-        logger.error(f"Invalid contract address {contract_address_tmp}: {e}")
-        raise ValueError("Invalid contract address.")
-    except ConnectionError as e:
-        logger.error(f"Connection error with node {node_url}: {e}")
-        raise ConnectionError("Problem connecting to the Ethereum node.")
-    except Exception as e:
-        logger.error(f"Unexpected error processing ABI for {contract_address_tmp}: {e}")
-        raise Exception("Unexpected error during ABI processing.")
+    w3 = make_web3(node_url)
+    contract_objects = {}
+    failed = set()
+    for address, abi in dict_abi.items():
+        try:
+            contract_objects[address.lower()] = process_abi(abi, address, w3)
+        except Exception as e:
+            logger.error(f"Failed to process ABI for address {address}: {e}")
+            failed.add(address.lower())
+    return contract_objects, failed
