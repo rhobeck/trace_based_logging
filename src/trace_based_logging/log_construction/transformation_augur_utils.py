@@ -1,6 +1,15 @@
+"""Helpers of the Augur transformation: activity naming from the mappings,
+attribute renaming and combination, contract labelling by creation relations, the
+contract-sensitive event split, and the market-information lookups.
+
+Functions: initial_transformation_events, initial_transformation_calls,
+rename_events, rename_attribute, combine_attributes, count_events,
+label_contracts, label_contract, label_contracts_by_relative, identify_factories,
+create_contract_sensitive_events, propagate_extraInfo, propagate_marketType,
+get_events, safe_load_json, fix_json_string, find_between, low.
+"""
 import pandas as pd
 import json
-from web3 import Web3
 
 from src.trace_based_logging.logging_config import setup_logging
 
@@ -23,7 +32,6 @@ def low(x):
 
 
 def initial_transformation_events(df, dapp_flag, txs_reverted):
-    # documentation written by ChatGPT
     """
     Performs initial transformations on the given DataFrame.
 
@@ -71,11 +79,16 @@ def initial_transformation_events(df, dapp_flag, txs_reverted):
     # Add a flag for all log entries
     df["flag_log_entry"] = True
     
-    # flag reverted oerations
-    if "txHash" in df.columns:
+    # flag reverted operations: the per-operation flag computed on the trace tree
+    # (transformation_augur.flag_reverted_operations) arrives as a column and is
+    # authoritative; the txs_reverted set is the fallback for inputs without the
+    # column.
+    if "flag_reverted" in df.columns:
+        df["flag_reverted"] = df["flag_reverted"].fillna(False).astype(bool)
+    elif "txHash" in df.columns:
         mask_reverted = df["txHash"].isin(list(txs_reverted))
         df["flag_reverted"] = mask_reverted
-    
+
     # Add a flag for DApp contracts based on the provided flag
     if dapp_flag:
         df["flag_dapp_contract"] = True
@@ -86,7 +99,6 @@ def initial_transformation_events(df, dapp_flag, txs_reverted):
 
 
 def rename_events(df_log, event_map_invert):
-    # documentation written by ChatGPT
     """
     Rename events in a DataFrame using a given mapping.
 
@@ -119,7 +131,6 @@ def rename_events(df_log, event_map_invert):
 
 
 def rename_attribute(df_log, attribute, attribute_new, attribute_map):
-    # documented with ChatGPT
     """
     Renames values in a specified column of a DataFrame based on a given mapping.
 
@@ -188,7 +199,6 @@ def combine_attributes(df, attribute_1, attribute_2, attribute_target, connector
 
 
 def count_events(df_log, col):
-    # documentation written by ChatGPT
     """
     Counts and prints the number of occurrences for each unique activity in the given DataFrame.
 
@@ -254,7 +264,6 @@ def label_contracts(df_log, mappings, creations, contracts_dapp):
 
 
 def create_contract_sensitive_events(df_log, mappings, creations, contracts_dapp, activity_split_candidates):
-    # documentation in part with ChatGPT
     """
     Processes a log dataframe to create contract sensitive events. It includes renaming events,
     identifying factory contracts, and labeling contracts with specific names.
@@ -318,7 +327,6 @@ def safe_load_json(s):
 
 
 def propagate_extraInfo(df_events_dapp):
-    # documentation written by ChatGPT
     """
     Propagate extraInfo information from 'create market' entries to related activities.
 
@@ -342,7 +350,6 @@ def propagate_extraInfo(df_events_dapp):
 
     
 def propagate_marketType(df_events_dapp):
-    # written by ChatGPT
     """
     Propagate marketType information from 'create market' entries to related activities.
 
@@ -456,7 +463,11 @@ def initial_transformation_calls(df_calls, dapp_flag, txs_reverted):
     else: 
         logger.info("No 'hash' found in calls.")
     
-    if "txHash" in df_calls.columns:
+    # per-operation flag from the trace tree is authoritative; the txs_reverted
+    # set is the fallback for inputs without the column
+    if "flag_reverted" in df_calls.columns:
+        df_calls["flag_reverted"] = df_calls["flag_reverted"].fillna(False).astype(bool)
+    elif "txHash" in df_calls.columns:
         mask_reverted = df_calls["txHash"].isin(list(txs_reverted))
         df_calls["flag_reverted"] = mask_reverted
 
@@ -470,7 +481,9 @@ def initial_transformation_calls(df_calls, dapp_flag, txs_reverted):
     val_list = ["gas", "gasUsed", "callvalue"]
     for val in val_list:
         if val in df_calls.columns:
-            df_calls.loc[:, val] = df_calls[val].apply(lambda x: int(x, 0) if isinstance(x, str) and x.lower() != "nan" else (int(x) if pd.notnull(x) else None))
+            # plain setitem, not .loc[:, col]: the conversion changes the column
+            # dtype (str -> int), which .loc assignment no longer permits
+            df_calls[val] = df_calls[val].apply(lambda x: int(x, 0) if isinstance(x, str) and x.lower() != "nan" else (int(x) if pd.notnull(x) else None))
 
     #for val in val_list:
     #    df_calls.loc[:, val] = df_calls[val].apply(lambda x: int(x, 0) if str(x) != "nan" else None)
@@ -507,46 +520,6 @@ for act in act_list:
     print(list_act)
 '''
 
-
-
-def annotate_addresses(addresses, addresses_w_min_block_numbers, node_url, creations, contracts_dapp, mappings):
-    w3 = Web3(Web3.HTTPProvider(node_url))
-    contract_name_map = label_contracts_by_relative(creations, contracts_dapp, mappings["factory_contract_map"])
-    address_dict = {}
-    for address in addresses:
-             
-        dapp_flag = dapp_check(address, contracts_dapp)
-        
-        address_type = address_type_check(address, addresses_w_min_block_numbers, w3)
-
-        contract_label = label_contract(address, mappings, contract_name_map)
-            
-        address_dict[address] = {"dapp_flag": dapp_flag, "type": address_type, "contract_label": contract_label}
-
-    return address_dict
-
-
-def address_type_check(address, addresses_w_min_block_numbers, w3):
-    # TODO: Caveat: self-destructed contracts also have "0x" as code, see: 0xE9F42B1013F90Bb16eaB5382936cC7F9804dcFc5
-    address_checksum = Web3.toChecksumAddress(address)
-    block_number = addresses_w_min_block_numbers[address]
-    byte_res = w3.eth.getCode(address_checksum, block_identifier=block_number)
-    
-    if byte_res.hex() == "0x":
-        address_type = "EOA"
-    else:
-        address_type = "CA"
-
-    return address_type
-
-
-def dapp_check(address, contracts_dapp):
-    # Check if contract is part of DApp
-    if address in contracts_dapp:
-        dapp_flag = "dapp"
-    else: 
-        dapp_flag = "non_dapp"
-    return dapp_flag
 
 
 def label_contract(address, mappings, contract_name_map):

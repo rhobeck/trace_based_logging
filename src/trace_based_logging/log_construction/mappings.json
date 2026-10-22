@@ -991,5 +991,99 @@
         "CancelOrder": " (cancel order)",
         "Trade": " (trade)",
         "CreateOrder": " (create order)"
+    },
+
+
+    "object_model": {
+        "schema_version": 1,
+        "null_values": ["0x0000000000000000000000000000000000000000"],
+        "types": [
+            {
+                "name": "EOA",
+                "id_prefix": "EOA_",
+                "address": true,
+                "sources": [
+                    {
+                        "column": "sender",
+                        "qualifier": "EOA_FROM"
+                    },
+                    {
+                        "column": "target",
+                        "qualifier": "EOA_TO"
+                    }
+                ],
+                "category_value": "EOA"
+            },
+            {
+                "name": "TOKEN",
+                "id_prefix": "TOKEN_",
+                "address": true,
+                "sources": [
+                    {
+                        "column": "token",
+                        "qualifier": "TOKEN"
+                    }
+                ],
+                "category_column": "tokenType_name"
+            },
+            {
+                "name": "ORDER",
+                "id_prefix": "ORDER_",
+                "address": false,
+                "sources": [
+                    {
+                        "column": "orderId",
+                        "qualifier": "ORDER"
+                    }
+                ],
+                "category_column": "orderType"
+            },
+            {
+                "name": "CONTRACT",
+                "id_prefix": "CONTRACT_",
+                "address": true,
+                "sources": [
+                    {
+                        "column": "address",
+                        "qualifier": "CONTRACT"
+                    }
+                ],
+                "category_column": "contract_name"
+            },
+            {
+                "name": "MARKET",
+                "id_prefix": "MARKET_",
+                "address": true,
+                "sources": [
+                    {
+                        "column": "market",
+                        "qualifier": "MARKET"
+                    }
+                ],
+                "category_column": "marketType",
+                "state_map": {
+                    "create market": "created",
+                    "call to log initial report submission": "reported",
+                    "create dispute": "disputed",
+                    "contribute to dispute": "disputed",
+                    "call to log market finalization": "finalized"
+                }
+            }
+        ],
+        "frame_object_types": {
+            "EOA": "EOA",
+            "CA": "CONTRACT"
+        },
+        "role_columns": {
+            "reporter": "REPORTER",
+            "marketCreator": "MARKETCREATOR",
+            "creator": "ORDER_CREATOR",
+            "filler": "FILLER",
+            "contributor": "CONTRIBUTOR"
+        },
+        "w2_mirror_types": [
+            ["TOKEN", "CONTRACT"],
+            ["MARKET", "CONTRACT"]
+        ]
     }
 }

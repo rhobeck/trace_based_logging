@@ -1,3 +1,12 @@
+"""The transformation stage of the Augur case study: turns the decoded category
+tables into the activity-labelled operation tables (activity names from
+mappings.json), flags reverted operations from the trace tree and audits the flags
+against the receipts, and writes one table per category and DApp side.
+
+Functions: load_mappings, load_resources, flag_reverted_operations,
+validate_revert_flags, transform_<category>_<side>, save_transformed_category,
+transform_augur_data.
+"""
 import os
 import json
 import pickle
@@ -9,7 +18,6 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
 
 from src.trace_based_logging.log_construction import transformation_augur_utils
-from src.trace_based_logging.log_construction import address_classification
 from src.trace_based_logging.logging_config import setup_logging
 
 logger = setup_logging()
@@ -24,60 +32,104 @@ def load_mappings(mapping_path):
         raise
 
 def load_resources(base_contract, min_block, max_block, resources_dir, CONFIG):
+    """Parquet is the canonical form; pickle is read when present."""
     logger.info("Loading resources.")
-    creations_path = os.path.join(resources_dir, CONFIG["log_folder"], "decoding", f'creations_{base_contract}_{min_block}_{max_block}.pkl')
-    contracts_dapp_path = os.path.join(resources_dir, CONFIG["log_folder"], "extraction", f'contracts_dapp_{base_contract}_{min_block}_{max_block}.pkl')
-    creations = pickle.load(open(creations_path, "rb"))
-    contracts_dapp = pickle.load(open(contracts_dapp_path, "rb"))
+    creations_base = os.path.join(resources_dir, CONFIG["log_folder"], "decoding",
+                                  f'creations_{base_contract}_{min_block}_{max_block}')
+    contracts_base = os.path.join(resources_dir, CONFIG["log_folder"], "extraction",
+                                  f'contracts_dapp_{base_contract}_{min_block}_{max_block}')
+    if os.path.exists(creations_base + ".parquet"):
+        creations = pd.read_parquet(creations_base + ".parquet")
+    else:
+        creations = pickle.load(open(creations_base + ".pkl", "rb"))
+    if os.path.exists(contracts_base + ".parquet"):
+        contracts_dapp = set(pd.read_parquet(contracts_base + ".parquet")["address"])
+    else:
+        contracts_dapp = pickle.load(open(contracts_base + ".pkl", "rb"))
     return creations, contracts_dapp
 
-def get_reverted_transactions(resources_dir, base_contract, min_block, max_block, CONFIG):
-    logger.info("Log construction identifying reverted transactions.")
-    trace_tree_csv = os.path.join(resources_dir, CONFIG["log_folder"], "extraction", f"df_trace_tree_{base_contract}_{min_block}_{max_block}.csv")
-    
-    try:
-        # Read just the header to get the column names
-        header = pd.read_csv(trace_tree_csv, nrows=0)
-        if "error" not in header.columns:
-            logger.info("No reverted transactions found in the extracted data.")
-            return set()
-        
-        # Now read the necessary columns since 'error' is available
-        errors = pd.read_csv(trace_tree_csv, usecols=["error", "hash"],
-                             dtype={"hash": str, "error": str})
-        errors.reset_index(drop=True, inplace=True)
-        
-        mask_reverted = errors["error"].isin([
-            'out of gas', 
-            'invalid jump destination',
-            'execution reverted',
-            'write protection',
-            'invalid opcode: INVALID',
-            'contract creation code storage out of gas'
-        ])
-        txs_reverted = set(errors.loc[mask_reverted, "hash"])
-        logger.info(f"Number of reverted transactions: {len(txs_reverted)}")
-        return txs_reverted
-    except Exception as e:
-        logger.error(f"Error identifying reverted transactions: {e}")
-        return set()
+def flag_reverted_operations(df):
+    """Per-operation revert flag.
+
+    An operation's state changes were rolled back iff its own frame OR any
+    ancestor frame in the call tree errored (the EVM rollback rule); log entries
+    inherit the flag of their emitting frame (they share its tracePosDepth
+    prefix). Any non-null `error` counts — no error-string whitelist, so client
+    vocabulary changes cannot silently unflag operations; correctness is instead
+    enforced against receipts by validate_revert_flags (fail-fast).
+    """
+    df["flag_reverted"] = False
+    if "error" not in df.columns:
+        return df
+    errored = df.loc[df["error"].notna(), ["hash", "tracePosDepth"]]
+    if errored.empty:
+        return df
+
+    # ancestor paths per transaction, only for transactions containing an
+    # errored frame at all
+    prefixes = errored.groupby("hash")["tracePosDepth"].agg(tuple).to_dict()
+    affected = df["hash"].isin(prefixes.keys())
+
+    def rolled_back(row):
+        path = row["tracePosDepth"]
+        return any(path == p or path.startswith(p + ".")
+                   for p in prefixes[row["hash"]])
+
+    df.loc[affected, "flag_reverted"] = (
+        df.loc[affected, ["hash", "tracePosDepth"]].apply(rolled_back, axis=1))
+    return df
+
+
+def validate_revert_flags(df, receipts):
+    """Audit of flag_reverted against the receipts, over all transactions.
+
+    Check 1: a transaction's receipt says status=0 iff its root frame is flagged
+             (equivalently: iff ALL its operations are flagged).
+    Check 2: for every successful transaction, the receipt holds exactly the logs
+            of effective frames, so its logCount must equal the transaction's
+            count of UNFLAGGED log operations.
+    """
+    r = receipts.set_index("txHash")
+    # the receipts cache is shared across runs and may cover a larger population
+    # than this run's trace tree; the audit is full-population FOR THIS RUN, so
+    # scope the receipts to the transactions actually present
+    r = r.loc[r.index.intersection(df["hash"].unique())]
+
+    root_flag = df.loc[df["tracePosDepth"] == "1"].set_index("hash")["flag_reverted"]
+    mismatch = root_flag != (r.loc[root_flag.index, "status"] == 0)
+    if mismatch.any():
+        raise ValueError(f"Check 1: {int(mismatch.sum())} transactions where "
+                         f"flag_reverted contradicts receipt status, e.g. "
+                         f"{list(root_flag.index[mismatch][:5])}")
+
+    is_log = df["address"].notna()          # log rows carry the emitter address
+    effective_logs = (df[is_log & ~df["flag_reverted"]]
+                      .groupby("hash").size()
+                      .reindex(r.index[r["status"] == 1], fill_value=0))
+    bad = effective_logs != r.loc[effective_logs.index, "logCount"]
+    if bad.any():
+        raise ValueError(f"Check 2: {int(bad.sum())} successful transactions where "
+                         f"unflagged log count != receipt logCount, e.g. "
+                         f"{list(effective_logs.index[bad][:5])}")
 
 
 def load_if_not_found_in_state(resources_dir, file_name_snipped, state, CONFIG):
     
     base_contract = state["base_contract"]
-    csv_path = os.path.join(resources_dir, CONFIG["log_folder"], "decoding", f"{file_name_snipped}_{base_contract}_{CONFIG['min_block']}_{CONFIG['max_block']}.csv")
-    pkl_path = os.path.join(resources_dir, CONFIG["log_folder"], "decoding", f"{file_name_snipped}_{base_contract}_{CONFIG['min_block']}_{CONFIG['max_block']}.pkl")
-
-    # Try to load the DataFrame
-    if os.path.exists(pkl_path):
-        data = pd.read_pickle(pkl_path)
+    base = os.path.join(resources_dir, CONFIG["log_folder"], "decoding",
+                        f"{file_name_snipped}_{base_contract}_{CONFIG['min_block']}_{CONFIG['max_block']}")
+    # Parquet is the canonical form; pickle and CSV are read when present.
+    if os.path.exists(base + ".parquet"):
+        data = pd.read_parquet(base + ".parquet")
+        logger.info(f"Loaded {file_name_snipped} from parquet file.")
+    elif os.path.exists(base + ".pkl"):
+        data = pd.read_pickle(base + ".pkl")
         logger.info(f"Loaded {file_name_snipped} from pickle file.")
-    elif os.path.exists(csv_path):
-        data = pd.read_csv(csv_path)
+    elif os.path.exists(base + ".csv"):
+        data = pd.read_csv(base + ".csv")
         logger.info(f"Loaded {file_name_snipped} from CSV file.")
     else:
-        logger.error(f"Neither the pickle file nor the CSV file exists for {file_name_snipped}.")
+        raise FileNotFoundError(f"No parquet, pickle or CSV file for {file_name_snipped} at {base}.")
     return data
 
 
@@ -100,6 +152,10 @@ def transform_events_dapp(state, resources_dir, CONFIG,
     events = transformation_augur_utils.initial_transformation_events(events, True, txs_reverted)
     events = transformation_augur_utils.rename_attribute(events, "Activity", "Activity", mappings["event_map_dapp"])
     events = transformation_augur_utils.label_contracts(events, mappings, creations, contracts_dapp)
+    # token_map is keyed on the era float rendering ('0.0'…'4.0'; mappings.json is
+    # kept byte-identical) — coerce to numeric so the string-keyed lookup matches
+    if "tokenType" in events.columns:
+        events["tokenType"] = pd.to_numeric(events["tokenType"], errors="coerce")
     events = transformation_augur_utils.rename_attribute(events, "tokenType", "tokenType_name", mappings["token_map"])
     if sensitive_events:
         activity_split_candidates = ["transfer tokens", "give approval to transfer tokens", "mint tokens", "burn tokens"]
@@ -363,13 +419,12 @@ def transform_creations_non_dapp(creations, contracts_dapp):
     return creations_non_dapp
 
 def save_transformed_category(df, category_name, base_contract, min_block, max_block, resources_dir, log_folder):
+    from src.trace_based_logging import storage
+    from src.trace_based_logging.decoding import sanitize_for_parquet
     file_base = f"{category_name}_{base_contract}_{min_block}_{max_block}"
-    csv_path = os.path.join(resources_dir, log_folder, "transformation", file_base + ".csv")
-    pkl_path = os.path.join(resources_dir, log_folder, "transformation", file_base + ".pkl")
-    df.to_csv(csv_path)
-    with open(pkl_path, 'wb') as f:
-        pickle.dump(df, f)
-    logger.info(f"Saved {category_name} to {csv_path} and {pkl_path}")
+    parquet_path = os.path.join(resources_dir, log_folder, "transformation", file_base + ".parquet")
+    storage.write_atomic_parquet(parquet_path, sanitize_for_parquet(df))
+    logger.info(f"Saved {category_name} to {parquet_path}")
 
 def transform_augur_data(resources_dir, log_folder, state, CONFIG):
     """
@@ -390,7 +445,11 @@ def transform_augur_data(resources_dir, log_folder, state, CONFIG):
     mapping_path = os.path.join(os.path.dirname(__file__), "mappings.json")
     mappings = load_mappings(mapping_path)
     creations, contracts_dapp = load_resources(base_contract, min_block, max_block, resources_dir, CONFIG)
-    txs_reverted = get_reverted_transactions(resources_dir, base_contract, min_block, max_block, CONFIG)
+    # Revert status is the per-operation flag_reverted column computed on the
+    # trace tree (flag_reverted_operations) and audited against the receipts; the
+    # set-based path in initial_transformation_* applies only to inputs without
+    # the column.
+    txs_reverted = frozenset()
     
     market_info = None
     market_type_info = None
@@ -406,6 +465,10 @@ def transform_augur_data(resources_dir, log_folder, state, CONFIG):
         if CONFIG.get("sensitive_events", False):
             market_info = transformation_augur_utils.propagate_extraInfo(events_dapp)
             market_type_info = transformation_augur_utils.propagate_marketType(events_dapp)
+        # free each category after persisting: the five DApp frames together
+        # exceed the memory of an off-the-shelf machine
+        del events_dapp
+        state.pop("dapp_events_decoded", None)
     else:
         logger.info("Skipping EVENTS DAPP.")
     
@@ -416,6 +479,8 @@ def transform_augur_data(resources_dir, log_folder, state, CONFIG):
                                           sensitive_events=CONFIG.get("sensitive_events", False),
                                           market_info=market_info, market_type_info=market_type_info)
         save_transformed_category(calls_dapp, "dapp_calls", base_contract, min_block, max_block, resources_dir, log_folder)
+        del calls_dapp
+        state.pop("dapp_calls_decoded", None)
     else:
         logger.info("Skipping CALLS DAPP.")
     
@@ -426,6 +491,8 @@ def transform_augur_data(resources_dir, log_folder, state, CONFIG):
                                                     sensitive_events=CONFIG.get("sensitive_events", False),
                                                     market_info=market_info, market_type_info=market_type_info)
         save_transformed_category(dcalls_dapp, "dapp_delegatecalls", base_contract, min_block, max_block, resources_dir, log_folder)
+        del dcalls_dapp
+        state.pop("dapp_delegatecalls_decoded", None)
     else:
         logger.info("Skipping DELEGATECALLS DAPP.")
     
@@ -436,6 +503,8 @@ def transform_augur_data(resources_dir, log_folder, state, CONFIG):
                                                        sensitive_events=CONFIG.get("sensitive_events", False),
                                                        market_info=market_info, market_type_info=market_type_info)
         save_transformed_category(zcalls_dapp, "dapp_zero_value_calls", base_contract, min_block, max_block, resources_dir, log_folder)
+        del zcalls_dapp
+        state.pop("dapp_zero_value_calls_decoded", None)
     else:
         logger.info("Skipping ZERO VALUE CALLS DAPP.")
     
@@ -490,16 +559,4 @@ def transform_augur_data(resources_dir, log_folder, state, CONFIG):
         logger.info("Skipping CREATIONS NON-DAPP.")
     
     logger.info("Data transformation to prepare the event log complete.")
-    
-def build_address_dict(resources_dir, log_folder, base_contract, min_block, max_block, node_url, CONFIG):
-    logger.info("Building address dictionary.")        
-    mapping_path = os.path.join(os.path.dirname(__file__), "mappings.json")
-    mappings = load_mappings(mapping_path)
-    creations, contracts_dapp = load_resources(base_contract, min_block, max_block, resources_dir)
-    
-    address_dict = address_classification.create_address_dict(base_contract, log_folder, resources_dir, min_block, max_block, contracts_dapp, node_url, creations, mappings, CONFIG)
-    path = os.path.join(resources_dir, log_folder, "address_dict_" + str(min_block) + "_" + str(max_block) + ".pkl")
-    pickle.dump(address_dict, open(path, 'wb'))
-    
-    logger.info("Building address dictionary complete.")
 
