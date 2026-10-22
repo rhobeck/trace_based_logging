@@ -177,3 +177,15 @@ cython_debug/
 # VSC
 workspace.code-workspace
 .vscode
+
+# Large data artifacts (not versioned; regenerable)
+data/
+
+# Paper sources (local only, never published to the code repo)
+paper/
+.DS_Store
+
+
+# run logs and editor settings
+logs/
+.vscode/

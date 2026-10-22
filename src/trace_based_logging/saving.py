@@ -1,27 +1,39 @@
+"""The output folders of a run and the single-file form of the extraction output."""
 import os
-import pickle
+
+import pandas as pd
+
 from src.trace_based_logging.logging_config import setup_logging
+from src.trace_based_logging import storage
 
 logger = setup_logging()
 
+
 def folder_set_up(dir_path, config):
-    if not os.path.exists(os.path.join(dir_path, "resources", config["log_folder"])):
-        os.makedirs(os.path.join(dir_path, "resources", config["log_folder"]))
-    
     for folder in ["extraction", "decoding", "transformation"]:
-        if not os.path.exists(os.path.join(dir_path, "resources", config["log_folder"], folder)):
-            os.makedirs(os.path.join(dir_path, "resources", config["log_folder"], folder))
+        os.makedirs(os.path.join(dir_path, "resources", config["log_folder"], folder),
+                    exist_ok=True)
 
-def save_trace_data(config, state, dir_path):        
+
+def save_trace_data(config, state, dir_path):
+    """Persist the combined extraction output under the established naming scheme.
+
+    Storage is parquet. The per-batch part files written during extraction remain
+    the resumable record; these files are the single-file form for the later
+    stages.
+    """
     base_contract = state["base_contract"]
-    csv_path = os.path.join(dir_path, "resources", config["log_folder"], "extraction", f"df_trace_tree_{base_contract}_{config['min_block']}_{config['max_block']}.csv")
-    pkl_path = os.path.join(dir_path, "resources", config["log_folder"], "extraction", f"df_trace_tree_{base_contract}_{config['min_block']}_{config['max_block']}.pkl")
-    state["trace_tree"].to_csv(csv_path)
-    state["trace_tree"].to_pickle(pkl_path)
+    out_dir = os.path.join(dir_path, "resources", config["log_folder"], "extraction")
+    suffix = f"{base_contract}_{config['min_block']}_{config['max_block']}"
 
-    txt_path = os.path.join(dir_path, "resources", config["log_folder"], "extraction", "contracts_dapp_{base_contract}_{config['min_block']}_{config['max_block']}.txt")
-    pkl_contract_path = os.path.join(dir_path, "resources", config["log_folder"], "extraction", f"contracts_dapp_{base_contract}_{config['min_block']}_{config['max_block']}.pkl")
-    with open(txt_path, "w") as output:
-        output.write(str(state["contracts_dapp"]))
-    pickle.dump(state["contracts_dapp"], open(pkl_contract_path, 'wb'))
-    logger.info("DONE WITH THE DATA EXTRACTION, TRACE FILES SAVED")
+    trace_path = os.path.join(out_dir, f"df_trace_tree_{suffix}.parquet")
+    storage.write_atomic_parquet(trace_path, state["trace_tree"])
+
+    contracts_df = pd.DataFrame({"address": sorted(state["contracts_dapp"])})
+    storage.write_atomic_parquet(
+        os.path.join(out_dir, f"contracts_dapp_{suffix}.parquet"), contracts_df)
+    # human-readable copy
+    with open(os.path.join(out_dir, f"contracts_dapp_{suffix}.txt"), "w") as output:
+        output.write("\n".join(sorted(state["contracts_dapp"])))
+
+    logger.info(f"DONE WITH THE DATA EXTRACTION, TRACE FILES SAVED ({trace_path})")

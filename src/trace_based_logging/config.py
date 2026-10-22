@@ -1,3 +1,5 @@
+"""Configuration: loads config.json, flattens its sections into the keys the stages
+read, and validates them."""
 import json
 import os
 from src.trace_based_logging.logging_config import setup_logging
@@ -67,8 +69,11 @@ def transform_config(nested_config):
     # misc settings
     misc = nested_config.get("misc", {})
     flat_config["sensitive_events"] = misc.get("sensitive_events")
-    flat_config["log_folder"] = misc.get("log_folder") 
-    
+    flat_config["log_folder"] = misc.get("log_folder")
+    # Operation ordering mode: "paper" (default; the enumeration of Listing 2, used
+    # for the published logs) or "exact" (validation).
+    flat_config["ordering"] = misc.get("ordering", "paper")
+
     return flat_config
 
 def validate_config(config):
@@ -83,8 +88,13 @@ def validate_config(config):
     for key in required_keys:
         if key not in config:
             raise ValueError(f"Missing required configuration key: {key}")
-        if key == "etherscan_api_key" and config[key] == "ETHERSCAN_API_KEY":
-            raise ValueError("Please provide your Etherscan API key in the configuration file")
+    # The Etherscan key is only needed when an Etherscan-backed source is enabled
+    # (events-only discovery runs entirely against the node).
+    if (config.get("extract_normal_transactions") or config.get("extract_internal_transactions")) \
+            and config.get("etherscan_api_key") == "ETHERSCAN_API_KEY":
+        raise ValueError("Please provide your Etherscan API key in the configuration file")
+    if config.get("ordering") not in ("paper", "exact"):
+        raise ValueError(f"misc.ordering must be 'paper' or 'exact', got {config.get('ordering')!r}")
 
 def build_node_url(config):
     return f"{config['protocol']}{config['host']}:{config['port']}"
@@ -97,6 +107,7 @@ def initialize_extraction_state(config, utils_module):
         "base_contract": contracts_lx[0],
         "contracts_dapp": set(contracts_lx),
         "all_transactions": set(),
-        "trace_tree": None,  
-        "contracts_non_dapp": set(contracts_non_dapp)
+        "trace_tree": None,
+        "contracts_non_dapp": set(contracts_non_dapp),
+        "level": 1,
     }
