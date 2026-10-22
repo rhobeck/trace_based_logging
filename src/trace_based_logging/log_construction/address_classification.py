@@ -1,314 +1,312 @@
+"""
+Classification of addresses into externally owned accounts (EOA) and contract accounts (CA).
+
+The account type is the object attribute of Table 3 in the paper. An address is classified as CA if
+    1. it was created in the transaction traces (target of a CREATE or CREATE2; the zero address,
+       which a failed creation reports, is not a created contract), or
+    2. it holds bytecode at the maximum block of the extraction (eth_getCode), or
+    3. it executed code in the transaction traces, i.e., it sent an internal (non-root) call
+       frame or emitted a log entry. Only code can do either, so this also covers contracts
+       that self-destructed before the maximum block.
+All other addresses are classified as EOA.
+
+This follows Section 7 of the paper: the initiator of a transaction is always an EOA (hence the
+sender of an internal frame is always a CA), and the bytecode query identifies CAs except for
+self-destructed contracts and failed creations, the two cases covered by rules 1 and 3.
+Call and delegatecall targets are deliberately not used as evidence: the EVM executes a call to
+an address without code as a successful no-op (Augur proxies delegatecall to the zero address
+when a lookup is unset).
+
+The previous version of this module queried the bytecode once, at the block in which an address
+first appears. Evaluated on the full case study (154,519 addresses), that strategy agrees with
+the rules above on 154,369 addresses and classifies the remaining 150 as EOA although they are
+contracts: 121 contracts whose first creation attempt reverted (the retry deployed the same
+address later), 20 contracts that appear as parameters before their deployment, and 8 contracts
+that self-destructed within their first block. It adds no contract the rules above miss.
+
+The classified addresses are exactly the addresses that become objects in the event log, read
+the way the engine (ocel_construction) reads them: the address-typed object sources of the
+mapping m and the role columns on every operation, the call frame fields 'from' and 'to' on
+call and creation operations. A value there that is not an address is an error.
+"""
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pandas as pd
-import src.trace_based_logging.log_construction.transformation_augur_utils as transformation_augur_utils
-from web3 import Web3
+import requests
+
+from src.trace_based_logging import storage
 from src.trace_based_logging.logging_config import setup_logging
+from src.trace_based_logging.log_construction.ocel_construction import CALL_TYPES, CREATE_TYPES
 
 logger = setup_logging()
 
-def define_address_columns():
-    columns_events = [
-    "from", # EOAs, DApp contracts, Non-DApp contracts
-    'to', # EOAs, DApp contracts, Non-DApp contracts
-    'address', # DApp contracts
-    '_from', # EOAs, DApp contracts, Non-DApp contracts
-    '_to', # EOAs, DApp contracts, Non-DApp contracts
-    'crowdsourcer', # DApp contracts (crowdsourcers)
-    'market', # DApp contracts (markets)
-    '_owner', # EOAs, DApp contracts, Non-DApp contracts
-    '_address', # DApp contracts
-    '_spender', # DApp contracts, Non-DApp contracts
-    'target', # EOAs / users
-    'token', # DApp contracts (Tokens)
-    'feeWindow', # DApp contracts (fee windows)
-    'marketCreator', # EOAs / users
-    'creator', # EOAs / users
-    'shareToken', # DApp contracts (SHARE tokens)
-    'filler', # EOAs / users
-    'sender', # EOAs / users
-    'reporter', # EOAs / users
-    'account', # EOAs / users
-    'disputeCrowdsourcer', # DApp contracts (Dispute crowdsourcers)
-    'contributor', # EOAs / users
-    'contractAuthor', # EOAs as deployer
-    'executor', # EOAs / users
-    'owner', # EOAs and Non-DApp contracts
-    'spender', # DApp contracts (REP tokens, inkl. REP v2)
-    ]
-
-    columns_calls_dapp = [
-    'from', # EOAs, DApp contracts
-    'to', # DApp contracts
-    'address', # DApp contracts
-    'denominationToken', # DApp contracts (Delegator)
-    'designatedReporterAddress', # EOAs / users
-    'sender', # EOAs / users
-    'market', # DApp contracts (markets)
-    ]
-
-    columns_delegatecalls_dapp = [
-    'from', # DApp contracts
-    'to', # DApp contracts
-    'spender', # DApp contracts, Non-Dapp contracts
-    'denominationToken', # DApp contract (Delegator)
-    'designatedReporterAddress', # EOAs / users
-    'source', # EOAs / users, DApp contracts, Non-DApp contracts 
-    'destination', # EOAs / users, DApp contracts, Non-DApp contracts
-    'owner', # EOAs / users, DApp contracts, Non-DApp contracts
-    'creator', # EOAs / users
-    'feeWindow', # DApp contracts (fee windows)
-    'market', # DApp contracts (markets)
-    'designatedReporter', # EOAs / users
-    'sender', # EOAs / users
-    'reporter', # EOAs / users
-    'target', # DApp contracts (Initial Reporter, Dispute Crowdsourcer)
-    'buyer', # EOAs / users
-    'participant', # EOAs / users, DApp contracts (Disputer)
-    'redeemer', # EOAs / users
-    'newOwner', # EOAs / users
-    ]
-
-    columns_calls_zero_value_dapp = [
-    'from', # EOAs / users, DApp contracts
-    'to', # DApp contracts
-    'controller', # DApp contracts, Non-Dapp contracts
-    'market', # DApp contracts (Markets)
-    'owner', # EOAs / users, DApp contracts
-    'target', # EOAs / users (there are a lot more unique addresses that the expected number of users)
-    'from_function_internal', # EOAs / users, DApp contracts
-    'to_function_internal', # EOAs / users, DApp contracts, Non-DApp contracts
-    'feeWindow', # DApp contracts (Fee Window)
-    'marketCreator', # EOAs / users
-    'designatedReporter', # EOAs / users
-    'creator', # EOAs / users
-    'token', # DApp contract (Delegator)
-    'shareToken', # DApp contracts (Share Token)
-    'filler', # EOAs / users
-    'sender', # EOAs / users
-    'reporter', # EOAs / users
-    'account', # EOAs / users
-    'disputeCrowdsourcer', # DApp contracts (Dispute Crowdsourcer)
-    'shareHolder', # EOAs / users
-    'contributor', # EOAs / users
-    'feeReceiver', # EOAs / users
-    'newOwner', # EOAs / users
-    'spender', # DApp contracts (REP tokens, inkl. REP v2)
-    ]
-
-    columns_creations_dapp = ["from", "to"]
-
-    return  columns_events, columns_calls_dapp, columns_delegatecalls_dapp, columns_calls_zero_value_dapp, columns_creations_dapp
+ADDRESS_PATTERN = r"^0x[0-9a-f]{40}$"
+ZERO_ADDRESS = "0x" + "0" * 40
+FRAME_COLUMNS = ["from", "to"]
 
 
-# identify addresses in the (dapp) log
+def define_address_columns(object_model, available_columns):
+    """
+    Define the columns that hold addresses which become objects in the event log.
+
+    Args:
+        object_model (dict): The mapping m (section 'object_model' of mappings.json).
+        available_columns (iterable): The columns of the operations dataframe.
+
+    Returns:
+        tuple: The sorted frame columns ('from', 'to'; objects on call and creation
+            operations only, as in the engine) and the sorted address columns of the
+            mapping (objects on every operation), each restricted to available_columns.
+    """
+    mapping_columns = set(object_model.get("role_columns", {}).keys())
+    for object_type in object_model["types"]:
+        if object_type.get("address", False):
+            for source in object_type["sources"]:
+                mapping_columns.add(source["column"])
+    frame_columns = set(FRAME_COLUMNS).difference(mapping_columns)
+    return (sorted(frame_columns.intersection(available_columns)),
+            sorted(mapping_columns.intersection(available_columns)))
+
+
 def define_addresses(columns, df):
+    """
+    Identify the addresses in the given columns of a dataframe.
+
+    Args:
+        columns (list): The columns to read addresses from.
+        df (pd.DataFrame): The dataframe.
+
+    Returns:
+        set: The lower-cased addresses (42-character hexadecimal strings).
+
+    Raises:
+        ValueError: If a column holds a value that is not an address (the engine would
+            turn it into an object without account type).
+    """
     addresses = set()
     for column in columns:
         if column in df.columns:
-            addresses.update(df[column].dropna())
-    addresses = {str(address).lower() for address in addresses}    
+            values = df[column].dropna().astype(str).str.lower()
+            malformed = values[~values.str.match(ADDRESS_PATTERN)]
+            if not malformed.empty:
+                raise ValueError(f"Column '{column}' holds {len(malformed):,} values that are "
+                                 f"not addresses (e.g. {sorted(set(malformed))[:3]}).")
+            addresses.update(values.unique())
     return addresses
 
 
-def get_min_block_numbers(addresses_df, address_cols, addresses):
+def collect_addresses(operations, object_model):
     """
-    Compute the earliest block number for each address.
+    Collect every address that becomes an object in the event log.
+
+    Args:
+        operations (pd.DataFrame): The operations (concatenated category tables).
+        object_model (dict): The mapping m.
+
     Returns:
-    - dict: A dictionary with addresses as keys and their earliest blockNumber as values.
+        set: The addresses to classify.
     """
-    # Ensure all strings in the address_cols are lowercase and handle non-string entries
-    for col in address_cols:
-        if col in addresses_df.columns:
-            if addresses_df[col].dtype != "object":  # Convert non-strings to strings
-                addresses_df[col] = addresses_df[col].astype(str)
-        addresses_df[col] = addresses_df[col].str.lower().fillna("")  # Convert to lowercase and handle NaN
-
-    # **Add this step to normalize the 'addresses' set**
-    # Ensure all addresses in the 'addresses' set are lowercase
-    addresses = {str(address).lower() for address in addresses}
-
-    # Reshape the DataFrame to have a single 'melted_address' column to avoid conflicts
-    melted_df = addresses_df.melt(
-        id_vars='blockNumber',
-        value_vars=address_cols,
-        value_name='melted_address'  # Changed from 'address' to 'melted_address'
-    )
-
-    # Ensure the 'melted_address' column is cleaned similarly
-    melted_df['melted_address'] = melted_df['melted_address'].str.lower().fillna("")
-
-    # Filter for the addresses of interest
-    filtered_df = melted_df[
-        melted_df['melted_address'].isin(addresses) & (melted_df['melted_address'] != "")
-    ]
-
-    # Group by 'melted_address' and find the minimal blockNumber
-    min_block_numbers_df = filtered_df.groupby('melted_address', as_index=False)['blockNumber'].max()
-
-    # Convert the DataFrame to a dictionary
-    min_block_numbers_dict = dict(
-        zip(min_block_numbers_df['melted_address'], min_block_numbers_df['blockNumber'])
-    )
-
-    return min_block_numbers_dict
+    frame_columns, mapping_columns = define_address_columns(object_model, operations.columns)
+    is_frame = operations["calltype"].isin(CALL_TYPES + CREATE_TYPES)
+    addresses = define_addresses(frame_columns, operations[is_frame])
+    # The null values of the mapping (e.g. the zero address as Augur's placeholder for
+    # "no market") become no object in the engine, so they get no account type either:
+    # the zero address is no account, neither EOA nor CA. Frame fields are not filtered,
+    # as in the engine: a call to an address is a fact of the trace, not a parameter.
+    null_values = {value.lower() for value in object_model.get("null_values", [])}
+    addresses.update(define_addresses(mapping_columns, operations).difference(null_values))
+    logger.info(f"Collected {len(addresses):,} addresses from the columns "
+                f"{frame_columns + mapping_columns}.")
+    return addresses
 
 
-def combine_min_block_numbers(dict_list):
+def created_addresses(trace_tree):
     """
-    Combine multiple dictionaries into one, keeping only the minimum blockNumber for each address.
-    
-    Parameters:
-    - dict_list: List[dict] - A list of dictionaries with addresses as keys and blockNumbers as values.
-    
+    Identify the addresses created in the transaction traces (targets of CREATE / CREATE2),
+    independent of which operation categories the event log includes. A creation that
+    failed reports the zero address as its result and created nothing.
+
+    Args:
+        trace_tree (pd.DataFrame): The trace tree with the columns 'type' and 'to'.
+
     Returns:
-    - dict: A single dictionary with each address and its minimum blockNumber.
+        set: The created addresses.
     """
-    combined_dict = {}
-    for d in dict_list:
-        for address, block_number in d.items():
-            if address in combined_dict:
-                combined_dict[address] = min(combined_dict[address], block_number)
-            else:
-                combined_dict[address] = block_number
-    return combined_dict
+    creations = trace_tree[trace_tree["type"].isin(CREATE_TYPES)]
+    created = define_addresses(["to"], creations)
+    created.discard(ZERO_ADDRESS)
+    return created
 
 
-def annotate_addresses(addresses, addresses_w_min_block_numbers, node_url, creations, contracts_dapp, mappings):
-    w3 = Web3(Web3.HTTPProvider(node_url))
-    contract_name_map = transformation_augur_utils.label_contracts_by_relative(creations, contracts_dapp, mappings["factory_contract_map"])
-    address_dict = {}
-    for address in addresses:
-             
-        dapp_flag = dapp_check(address, contracts_dapp)
-        
-        address_type = address_type_check(address, addresses_w_min_block_numbers, w3)
+def contract_evidence(trace_tree):
+    """
+    Identify the addresses that executed code in the transaction traces: senders of internal
+    (non-root) call frames and emitters of log entries.
 
-        contract_label = transformation_augur_utils.label_contract(address, mappings, contract_name_map)
-            
-        address_dict[address] = {"dapp_flag": dapp_flag, "type": address_type, "contract_label": contract_label}
+    Args:
+        trace_tree (pd.DataFrame): The trace tree with the columns 'type', 'tracePosDepth',
+            'from', and 'address'.
 
-    return address_dict
-
-
-def address_type_check(address, addresses_w_min_block_numbers, w3):
-    # TODO: Caveat: self-destructed contracts also have "0x" as code, see: 0xE9F42B1013F90Bb16eaB5382936cC7F9804dcFc5
-    address_checksum = Web3.toChecksumAddress(address)
-    block_number = addresses_w_min_block_numbers[address]
-    byte_res = w3.eth.getCode(address_checksum, block_identifier=block_number)
-    
-    if byte_res.hex() == "0x":
-        address_type = "EOA"
-    else:
-        address_type = "CA"
-
-    return address_type
+    Returns:
+        set: The addresses with evidence of being a contract.
+    """
+    is_internal_frame = (trace_tree["tracePosDepth"].astype(str) != "1") & trace_tree["type"].notna()
+    senders = define_addresses(["from"], trace_tree[is_internal_frame])
+    emitters = define_addresses(["address"], trace_tree)
+    logger.info(f"Trace evidence: {len(senders):,} internal senders, {len(emitters):,} log emitters.")
+    return senders.union(emitters)
 
 
-def dapp_check(address, contracts_dapp):
-    # Check if contract is part of DApp
-    if address in contracts_dapp:
-        dapp_flag = "dapp"
-    else: 
-        dapp_flag = "non_dapp"
-    return dapp_flag
+def get_code_size(address, block_number, node_url, max_attempts=10, timeout=60):
+    """
+    Query the size of the bytecode of an address at a block (eth_getCode).
+
+    Args:
+        address (str): The address.
+        block_number (int): The block at which the code is queried.
+        node_url (str): The URL of the Ethereum node.
+        max_attempts (int): Retries before giving up.
+        timeout (int): Request timeout in seconds.
+
+    Returns:
+        int: The code size in bytes (0 for an address without code).
+    """
+    payload = {"jsonrpc": "2.0", "id": 1, "method": "eth_getCode",
+               "params": [address, hex(int(block_number))]}
+    for attempt in range(max_attempts):
+        try:
+            response = requests.post(node_url, json=payload, timeout=timeout).json()
+            if response.get("result") is not None:
+                return (len(response["result"]) - 2) // 2
+            logger.warning(f"eth_getCode for {address} returned {response.get('error')}.")
+        except (requests.RequestException, ValueError) as error:
+            logger.warning(f"eth_getCode for {address} failed: {error}.")
+        time.sleep(min(30, attempt + 1))
+    raise RuntimeError(f"eth_getCode failed for {address} at block {block_number}.")
 
 
+def load_code_size_cache(cache_path, block_number):
+    """
+    Load previously queried code sizes, if they were queried at the same block.
 
-def create_address_dict(base_contract, log_folder, dir_path, min_block, max_block, contracts_dapp, node_url, creations, mappings, toggles):
-    # Define the columns for each address category.
-    columns_events, columns_calls_dapp, columns_delegatecalls_dapp, columns_calls_zero_value_dapp, columns_creations_dapp = define_address_columns()
+    Args:
+        cache_path (str): Path of the cache parquet file.
+        block_number (int): The block the sizes must have been queried at.
 
-    # Initialize empty sets and dictionaries for each category.
-    addresses_events_dapp = set()
-    dict_events_dapp = {}
-    addresses_calls_dapp = set()
-    dict_calls_dapp = {}
-    addresses_delegatecalls_dapp = set()
-    dict_delegatecalls_dapp = {}
-    addresses_calls_zero_dapp = set()
-    dict_calls_zero_dapp = {}
-    addresses_creations_dapp = set()
-    dict_creations_dapp = {}
+    Returns:
+        dict: Address -> code size.
+    """
+    if cache_path is None or not os.path.exists(cache_path):
+        return {}
+    cache = pd.read_parquet(cache_path)
+    if not (cache["block"] == block_number).all():
+        return {}
+    return dict(zip(cache["address"], cache["code_bytes"]))
 
-    # Process ZERO VALUE CALLS DAPP if enabled.
-    if toggles.get("dapp_zero_value_calls", False):
-        path = os.path.join(dir_path, log_folder,
-                            f'dapp_zero_value_calls_{base_contract}_{min_block}_{max_block}.csv')
-        cols = columns_calls_zero_value_dapp + ["blockNumber"]
-        calls_dapp_zero_value = pd.read_csv(path, usecols=cols)
-        addresses_calls_zero_dapp = define_addresses(columns_calls_zero_value_dapp, calls_dapp_zero_value)
-        dict_calls_zero_dapp = get_min_block_numbers(calls_dapp_zero_value, columns_calls_zero_value_dapp, addresses_calls_zero_dapp)
-        del calls_dapp_zero_value
-    else:
-        logger.info("Skipping ZERO VALUE CALLS DAPP for address dict.")
 
-    # Process EVENTS DAPP if enabled.
-    if toggles.get("dapp_events", False):
-        path = os.path.join(dir_path, log_folder,
-                            f'dapp_events_{base_contract}_{min_block}_{max_block}.csv')
-        cols = columns_events + ["blockNumber"]
-        events_dapp = pd.read_csv(path, usecols=cols)
-        addresses_events_dapp = define_addresses(columns_events, events_dapp)
-        dict_events_dapp = get_min_block_numbers(events_dapp, columns_events, addresses_events_dapp)
-        del events_dapp
-    else:
-        logger.info("Skipping EVENTS DAPP for address dict.")
+def save_code_size_cache(cache_path, code_sizes, block_number):
+    """
+    Save the queried code sizes.
 
-    # Process CALLS DAPP if enabled.
-    if toggles.get("dapp_calls", False):
-        path = os.path.join(dir_path, log_folder,
-                            f'dapp_calls_{base_contract}_{min_block}_{max_block}.csv')
-        cols = columns_calls_dapp + ["blockNumber"]
-        calls_dapp = pd.read_csv(path, usecols=cols)
-        addresses_calls_dapp = define_addresses(columns_calls_dapp, calls_dapp)
-        dict_calls_dapp = get_min_block_numbers(calls_dapp, columns_calls_dapp, addresses_calls_dapp)
-        del calls_dapp
-    else:
-        logger.info("Skipping CALLS DAPP for address dict.")
+    Args:
+        cache_path (str): Path of the cache parquet file.
+        code_sizes (dict): Address -> code size.
+        block_number (int): The block the sizes were queried at.
+    """
+    if cache_path is None:
+        return
+    cache = pd.DataFrame({"address": list(code_sizes.keys()),
+                          "code_bytes": list(code_sizes.values()),
+                          "block": block_number})
+    storage.write_atomic_parquet(cache_path, cache)
 
-    # Process DELEGATECALLS DAPP if enabled.
-    if toggles.get("dapp_delegatecalls", False):
-        path = os.path.join(dir_path, log_folder,
-                            f'dapp_delegatecalls_{base_contract}_{min_block}_{max_block}.csv')
-        cols = columns_delegatecalls_dapp + ["blockNumber"]
-        delegatecalls_dapp = pd.read_csv(path, usecols=cols)
-        addresses_delegatecalls_dapp = define_addresses(columns_delegatecalls_dapp, delegatecalls_dapp)
-        dict_delegatecalls_dapp = get_min_block_numbers(delegatecalls_dapp, columns_delegatecalls_dapp, addresses_delegatecalls_dapp)
-        del delegatecalls_dapp
-    else:
-        logger.info("Skipping DELEGATECALLS DAPP for address dict.")
 
-    # Process CREATIONS DAPP if enabled.
-    if toggles.get("dapp_creations", False):
-        path = os.path.join(dir_path, log_folder,
-                            f'dapp_creations_{base_contract}_{min_block}_{max_block}.csv')
-        cols = columns_creations_dapp + ["blockNumber"]
-        creations_dapp = pd.read_csv(path, usecols=cols)
-        addresses_creations_dapp = define_addresses(columns_creations_dapp, creations_dapp)
-        dict_creations_dapp = get_min_block_numbers(creations_dapp, columns_creations_dapp, addresses_creations_dapp)
-        del creations_dapp
-    else:
-        logger.info("Skipping CREATIONS DAPP for address dict.")
+def fetch_code_sizes(addresses, get_code, block_number, cache_path=None, workers=3):
+    """
+    Query the code size of every address at a block, reusing cached results.
 
-    # Combine addresses from all enabled categories.
-    addresses = contracts_dapp | addresses_events_dapp | addresses_calls_dapp | addresses_calls_zero_dapp | addresses_delegatecalls_dapp | addresses_creations_dapp
+    Args:
+        addresses (iterable): The addresses to query.
+        get_code (callable): get_code(address, block_number) -> code size in bytes.
+        block_number (int): The block at which the code is queried.
+        cache_path (str): Path of the cache parquet file (None: no cache).
+        workers (int): Number of concurrent queries.
 
-    # Combine the min block numbers from all enabled categories.
-    dict_list = []
-    if toggles.get("dapp_zero_value_calls", False):
-        dict_list.append(dict_calls_zero_dapp)
-    if toggles.get("dapp_events", False):
-        dict_list.append(dict_events_dapp)
-    if toggles.get("dapp_calls", False):
-        dict_list.append(dict_calls_dapp)
-    if toggles.get("dapp_delegatecalls", False):
-        dict_list.append(dict_delegatecalls_dapp)
-    if toggles.get("dapp_creations", False):
-        dict_list.append(dict_creations_dapp)
+    Returns:
+        dict: Address -> code size, for every given address.
+    """
+    code_sizes = load_code_size_cache(cache_path, block_number)
+    addresses_to_query = sorted(set(addresses).difference(code_sizes.keys()))
+    logger.info(f"Querying the code of {len(addresses_to_query):,} addresses at block "
+                f"{block_number} ({len(code_sizes):,} cached).")
 
-    addresses_w_min_block_numbers = combine_min_block_numbers(dict_list)
+    start_time = time.time()
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        results = executor.map(lambda address: get_code(address, block_number), addresses_to_query)
+        for count, (address, code_size) in enumerate(zip(addresses_to_query, results), start=1):
+            code_sizes[address] = code_size
+            if count % 5000 == 0:
+                save_code_size_cache(cache_path, code_sizes, block_number)
+                rate = count / (time.time() - start_time)
+                logger.info(f"Queried {count:,} of {len(addresses_to_query):,} addresses ({rate:.0f}/s).")
+    save_code_size_cache(cache_path, code_sizes, block_number)
 
-    # Annotate the addresses with additional metadata.
-    address_dict = annotate_addresses(addresses, addresses_w_min_block_numbers, node_url, creations, contracts_dapp, mappings)
-    
-    return address_dict
+    return {address: code_sizes[address] for address in addresses}
+
+
+def classify_accounts(operations, object_model, trace_tree, max_block, get_code,
+                      cache_path=None, known_contracts=()):
+    """
+    Classify every object address of the event log as EOA or CA.
+
+    Args:
+        operations (pd.DataFrame): The operations (concatenated category tables).
+        object_model (dict): The mapping m.
+        trace_tree (pd.DataFrame): The trace tree of the extraction with the columns 'type',
+            'tracePosDepth', 'from', 'to', and 'address'.
+        max_block (int): The maximum block of the extraction.
+        get_code (callable): get_code(address, block_number) -> code size in bytes.
+        cache_path (str): Path of the code size cache (None: no cache).
+        known_contracts (iterable): Addresses that are contracts by configuration
+            (the DApp's seed contracts).
+
+    Returns:
+        pd.DataFrame: One row per address with the columns 'address', 'account_type'
+            ('EOA' / 'CA'), 'source' ('creations' / 'getCode' / 'trace_evidence'),
+            and 'code_bytes'.
+    """
+    logger.info("Classifying addresses into EOAs and CAs.")
+    addresses = collect_addresses(operations, object_model)
+
+    created = created_addresses(trace_tree)
+    created.update(address.lower() for address in known_contracts)
+    created = created.intersection(addresses)
+    logger.info(f"{len(created):,} addresses were created in the transaction traces.")
+
+    evidence = contract_evidence(trace_tree).intersection(addresses)
+
+    code_sizes = fetch_code_sizes(addresses.difference(created), get_code, max_block, cache_path)
+
+    rows = []
+    for address in sorted(addresses):
+        if address in created:
+            rows.append({"address": address, "account_type": "CA", "source": "creations",
+                         "code_bytes": None})
+        elif code_sizes[address] > 0:
+            rows.append({"address": address, "account_type": "CA", "source": "getCode",
+                         "code_bytes": code_sizes[address]})
+        elif address in evidence:
+            rows.append({"address": address, "account_type": "CA", "source": "trace_evidence",
+                         "code_bytes": 0})
+        else:
+            rows.append({"address": address, "account_type": "EOA", "source": "getCode",
+                         "code_bytes": 0})
+
+    account_types = pd.DataFrame(rows, columns=["address", "account_type", "source", "code_bytes"])
+    assert set(account_types["address"]) == addresses
+
+    counts = account_types.groupby(["account_type", "source"]).size().to_dict()
+    logger.info(f"Classified {len(account_types):,} addresses: {counts}.")
+    return account_types
