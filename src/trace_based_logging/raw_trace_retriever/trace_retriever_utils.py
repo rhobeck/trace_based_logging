@@ -6,6 +6,17 @@ from src.trace_based_logging.logging_config import setup_logging
 # Create a logger
 logger = setup_logging()
 
+
+def make_web3(node_url):
+    """Return a connected Web3 HTTP client, raising if the node is unreachable."""
+    from web3 import Web3
+    # explicit request timeout: a stale tunneled connection must raise (and be
+    # retried by the caller), never hang a run indefinitely
+    w3 = Web3(Web3.HTTPProvider(node_url, request_kwargs={"timeout": 60}))
+    if not w3.is_connected():
+        raise ConnectionError(f"Unable to connect to Ethereum node at {node_url}")
+    return w3
+
 def low(x):
     """
     Converts the input string to lowercase. If the input is not a string, 

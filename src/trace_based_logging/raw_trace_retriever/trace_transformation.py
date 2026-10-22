@@ -1,50 +1,72 @@
 import pandas as pd
 import time
-import datetime
 import requests
-import math
+from concurrent.futures import ThreadPoolExecutor
 from src.trace_based_logging.logging_config import setup_logging
 
 """
-This module provides functionalities for interacting with blockchain nodes to retrieve and process transaction trace data. 
-It includes functions for fetching JSON data for transaction hashes, converting transaction data into trace data, 
-flattening nested JSON structures, and handling nested transactions.
+This module retrieves transaction traces from a blockchain node and transforms them into
+per-operation records with their order of execution.
 
 Functions:
     json_retriever(tx_hash, node_url, max_attempts=15):
-        Retrieves JSON data for a given transaction hash from a blockchain node, with a specified number of retry attempts.
+        Retrieves the callTracer JSON for a transaction hash, with retries.
 
-    tx_to_trace(df_txs_lx, node_url):
-        Converts a DataFrame of transactions into a DataFrame of transaction traces by retrieving trace data from a blockchain node.
+    tx_to_trace(df_txs_lx, node_url, ordering=ORDERING_PAPER, max_attempts=15,
+                workers=TRACE_WORKERS):
+        Converts a DataFrame of transactions into a DataFrame of transaction trace
+        operations (call frames and log entries) annotated with tracePos/tracePosDepth.
+        Traces are fetched concurrently; the output is independent of `workers`.
 
-    insert_order(trace_json_lx, start):
-        Recursively appends an order number to the values of specific keys ('from', 'address') in a trace JSON structure.
+    insert_tracePos(data, trace_pos_counter=None, ordering=ORDERING_PAPER):
+        Annotates every operation in a trace with 'tracePos', its 1-based position in
+        the enumeration of the transaction (see Ordering modes below).
 
-    flatten(trace_json_lx, new_trace_json_lx={}):
-        Flattens a nested dictionary by recursively merging its nested structures into the parent dictionary.
+    insert_tracePosDepth(item, parent_index='', ordering=ORDERING_PAPER):
+        Annotates every operation with 'tracePosDepth', a hierarchical identifier
+        ("1.3.2") reflecting the tree structure of the trace.
 
-    flatten_nested(df_flat_json_tmp, df_trace_l1, tx_hash, functionName, timestamp, blockNumber):
-        Flattens nested JSON arguments in a DataFrame column named "calls" (if it exists) and organizes the data in a tabular format.
+    flatten(trace_json_lx):
+        Flattens an annotated trace into a list of per-operation records, one per
+        call frame and per log entry.
 
-    explode_df(df_flat_json, nested_cols):
-        Helper function to further flatten and explode nested columns ('calls', 'logs') in a DataFrame obtained from JSON data.
+    depth_sort_key(trace_pos_depth):
+        Sortable tuple form of a tracePosDepth string ('1.10.2' -> (1, 10, 2)).
 
-Constants:
-    INCREMENT_FACTOR (int): A constant used to determine the batch size for processing transactions in chunks.
+Ordering modes:
 
-Variables:
-    invalid_tx_hash (set): A set used to store transaction hashes that resulted in invalid or unexpected JSON responses.
+    ORDERING_PAPER ("paper", the default, used for the published logs): the
+        enumeration of Listing 2 of the paper — a frame's sub-calls are numbered
+        before the frame's log entries. Within a frame that both emits log entries
+        and makes sub-calls, the true interleaving of the two is not represented;
+        such operations carry orderExact = False. The per-log 'position' field of
+        newer tracers, which resolves it, did not exist when the data of the paper
+        were collected.
+
+    ORDERING_EXACT ("exact", for validation, not used for the published logs): the
+        true execution order, reconstructed by interleaving a frame's log entries
+        among its sub-calls via the tracer's per-log 'position' field. Requires a
+        client that emits 'position' (Geth 1.13.5 or later, Erigon 2025 or later);
+        raises otherwise. The tests use it with the receipt's logIndex as ground
+        truth.
 """
 
 logger = setup_logging()
 
-INCREMENT_FACTOR = 100
+# keys of a call frame that hold nested operations rather than frame attributes
+NESTED_KEYS = ("calls", "logs")
 
-invalid_tx_hash = set([])
+ORDERING_PAPER = "paper"
+ORDERING_EXACT = "exact"
+
+# concurrent debug_traceTransaction requests in tx_to_trace (16-core node host:
+# leaves headroom for the node itself and the pipeline's own processing)
+TRACE_WORKERS = 8
+
 
 def json_retriever(tx_hash, node_url, max_attempts=15):
     """
-    Retrieves JSON data for a given transaction hash from a blockchain node.
+    Retrieves the callTracer JSON (withLog enabled) for a transaction hash.
 
     Args:
         tx_hash (str): The transaction hash to retrieve the trace for.
@@ -52,7 +74,8 @@ def json_retriever(tx_hash, node_url, max_attempts=15):
         max_attempts (int): Maximum number of attempts for the request.
 
     Returns:
-        tuple: A tuple containing the JSON response and a boolean flag indicating success.
+        tuple: (response_json, json_flag) where json_flag is False if no valid trace
+        could be retrieved after max_attempts.
     """
     headers = {'Content-type': 'application/json'}
     parameters = {
@@ -62,364 +85,243 @@ def json_retriever(tx_hash, node_url, max_attempts=15):
         "id": 1
     }
     attempts = 0
-    json_flag = True
-
     while attempts < max_attempts:
         try:
-            response = requests.post(node_url, json=parameters, headers=headers)
-            # Check if response is valid and contains JSON
-            response_json = response.json()  # This line could raise ValueError if response is not valid JSON
-            if response_json and "result" in response_json and isinstance(response_json["result"], dict) and "type" in response_json["result"]:
-                return response_json, json_flag
+            response = requests.post(node_url, json=parameters, headers=headers,
+                                     timeout=300)
+            response_json = response.json()
+            if response_json and isinstance(response_json.get("result"), dict) and "type" in response_json["result"]:
+                return response_json, True
         except requests.exceptions.RequestException as e:
             logger.error(f"Request exception for tx_hash {tx_hash}: {e}")
         except ValueError as e:
             logger.error(f"JSON decoding error for tx_hash {tx_hash}: {e}")
-
         attempts += 1
-        if attempts == max_attempts:
-            #ts = datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')
-            logger.error(f"Max attempts reached. Invalid tx hash: {tx_hash}.")
-            json_flag = False
+        time.sleep(min(2 ** attempts * 0.1, 5))
 
-    return {}, json_flag
+    logger.error(f"Max attempts reached. Invalid tx hash: {tx_hash}.")
+    return {}, False
 
-"""
-def json_retriever(tx_hash, node_url):
 
-    headers = {'Content-type': 'application/json'}
-    parameters = {
-        "jsonrpc": "2.0",
-        "method": "debug_traceTransaction",
-        #"params": [tx_hash, {"tracer": 'callTracer'}],
-        "params": [tx_hash, {"tracer": 'callTracer', "tracerConfig": { "withLog": True }} ],
-        "id": 1
-    }
-    # Retrieve CALL data from the node
-    # Some requests are not processed properly; we give 15 attempts to retrieve a proper JSON response
-    # Retrieve CALL data from the node
-    attempts=0
-    json_flag = True
-    while True:
-        try:
-            response = requests.post(node_url, json=parameters, headers=headers)
-            # if the following two items are available, the response is in healthy format
-            response.json()["result"]["type"]
-            break
-        except Exception:
-            attempts += 1
-            if attempts==max_attempts:
-                ts = datetime.datetime.fromtimestamp(time.time()).strftime('%d-%m-%Y %H:%M:%S')
-                print(ts, "Exception: Unexpected JSON response. Invalid tx hash: ", tx_hash, " Best to recreate the JSON-trace and debug.")
-                
-                invalid_tx_hash.add(tx_hash)
-                # unexpected_response.append(response.json())
-                json_flag = False
-                break
-    return response.json(), json_flag
+def _hex_to_int(value):
+    if isinstance(value, str) and value.startswith("0x"):
+        return int(value, 16)
+    return value
 
-"""
 
-def tx_to_trace(df_txs_lx, node_url):
+def _children_in_order(frame, ordering):
+    """Return one frame's sub-calls and logs as ("call"|"log", node) pairs in the
+    order prescribed by the ordering mode, plus an exactness flag for the children.
+
+    ORDERING_PAPER: sub-calls first, then logs (Listing 2); exact only when the frame
+    emits no logs (a calls-only frame has no interleaving ambiguity).
+    ORDERING_EXACT: logs interleaved among sub-calls via the per-log 'position' field;
+    raises ValueError when the trace does not carry it.
     """
-    Converts a DataFrame of transactions into a DataFrame of transaction traces by retrieving trace data from a blockchain node. 
-    This function iterates over each transaction in the input DataFrame, retrieves its trace data from the specified node,
-    processes the trace data, and compiles the results into a new DataFrame containing the trace information.
+    if ordering not in (ORDERING_PAPER, ORDERING_EXACT):
+        raise ValueError(f"Unknown ordering mode: {ordering!r} "
+                         f"(expected {ORDERING_PAPER!r} or {ORDERING_EXACT!r})")
+    calls = frame.get("calls", [])
+    logs = frame.get("logs", [])
+    if not logs:
+        return [("call", c) for c in calls], True
+    if ordering == ORDERING_PAPER:
+        return [("call", c) for c in calls] + [("log", l) for l in logs], False
+    if not all("position" in l for l in logs):
+        raise ValueError(
+            "Exact ordering requested but the trace logs lack the 'position' field. "
+            "Re-trace with a client that provides it (Geth >= 1.13.5 / Erigon 2025+), "
+            "or use the default paper ordering."
+        )
+    by_position = {}
+    for l in logs:
+        by_position.setdefault(_hex_to_int(l["position"]), []).append(l)
+    ordered = []
+    for i, call in enumerate(calls):
+        for l in by_position.pop(i, []):
+            ordered.append(("log", l))
+        ordered.append(("call", call))
+    for pos in sorted(by_position):
+        for l in by_position[pos]:
+            ordered.append(("log", l))
+    return ordered, True
+
+
+def insert_tracePos(data, trace_pos_counter=None, ordering=ORDERING_PAPER):
+    """
+    Annotates every operation (call frame and log entry) with 'tracePos': its 1-based
+    position in the transaction's enumeration under the given ordering mode. Also sets
+    'orderExact' (False on operations whose relative order is approximated by the
+    paper enumeration).
 
     Args:
-        df_txs_lx (pd.DataFrame): A DataFrame containing transactions. Each transaction is expected to have at least
-                                  the 'hash', 'timeStamp', and 'blockNumber' fields.
-        node_url (str): The URL of the Ethereum node from which to retrieve trace data. This URL should point to an 
-                        API endpoint capable of returning transaction trace data (have Geth debug functionality, e.g., Geth or Erigon).
-
-    Returns:
-        pd.DataFrame: A DataFrame containing the traces of the transactions. This includes processed and flattened
-                      trace data for each transaction in `df_txs_lx`. The DataFrame is expanded to include detailed
-                      trace information such as execution order and potentially nested trace details, depending on the
-                      structure of the returned trace JSON data.
-
-    Overview:
-        The function performs the following steps for each transaction in `df_txs_lx`:
-        1. Retrieves the transaction hash and other relevant details from the input DataFrame.
-        2. Makes a request to the specified node URL to fetch the trace data for each transaction hash.
-        3. Processes the retrieved trace data to insert execution order and flatten the JSON structure.
-        4. Compiles the processed trace data into a temporary DataFrame, which is then concatenated to the final
-           DataFrame of transaction traces.
-        5. Prints progress updates and timing information to the console.
-
-    Note:
-        - This function contains a placeholder for the 'functionName' variable, which is currently not dynamically 
-          retrieved, as far as I know it is not used down the line.
-        - It uses an 'INCREMENT_FACTOR' (defined at the start of the module) to determine the batch size for 
-          processing transactions in chunks. 
-        - The function includes a method for appending execution order to the "from" and "address" fields in the
-          trace JSON which needs refinement.
-        - Error handling within the function relies on a 'json_flag' returned by 'json_retriever' to skip transactions
-          with faulty JSON data without halting the entire process.
-        - The loop should be implemented with, e.g., iterrows() to loop efficiently.
+        data (dict): A trace result, or the full JSON-RPC response containing 'result'.
+        trace_pos_counter (list of int, optional): single-element counter carried across
+            recursive calls; a fresh counter is created when omitted.
+        ordering (str): ORDERING_PAPER (default) or ORDERING_EXACT (validation only).
     """
-    data = []
-    df_trace_lx = pd.DataFrame(data)
-    tic = time.time()
-    
-    c_max = len(df_txs_lx)
-    c_tmp = 1
-    c_tmp_minus = 0
-    loop_round = 0
-    increment = math.ceil(c_max / INCREMENT_FACTOR)
-    while c_tmp_minus < c_max: 
-        df_trace_lx_tmp = pd.DataFrame()
-        loop_round += 1 
-    
-        for i in range(c_tmp_minus, c_tmp):
-            tx_hash=str(df_txs_lx.iloc[i]['hash'])
-            functionName="Place holder"#str(df_txs_lx.iloc[i]['functionName'])
-            timestamp=df_txs_lx.iloc[i]['timeStamp']
-            blockNumber = df_txs_lx.iloc[i]['blockNumber']
-            
-            # if (i != 0 and i % 100 == 0) or i == len(df_txs_lx)-1:
-            #     logger.info(f"Transactions for which traces were retrieved: {i+1}")
+    if trace_pos_counter is None:
+        trace_pos_counter = [0]
 
-            # retrieve JSON data
-            trace_json_lx, json_flag = json_retriever(tx_hash, node_url)
-            # json_flag in case something was wrong with the JSON from the server (i.e., json_flag == false), the respective tx hash is skipped. 
-            # corresponding faulty hash is logged already in json_retriever
-            if json_flag == False:
-                continue
-            # insert order of execution
-            trace_json_lx = insert_tracePos(trace_json_lx, trace_pos_counter=[0])
-            # insert position in trace by "depth" of the JSON dictionary (subprocesses) 
-            trace_json_lx = insert_tracePosDepth(trace_json_lx, parent_index="")
-            # insert position in trace by "depth" of the JSON dictionary (subprocesses) 
-            # trace_json_lx = insert_eventPos(trace_json_lx)
-            # flatten the JSON data
-            df_flat_json = pd.DataFrame.from_dict(flatten(trace_json_lx, {}), orient="index").T
-            # flatten nested JSON data
-            df_trace_lx_tmp = flatten_nested(df_flat_json, df_trace_lx_tmp, tx_hash, functionName, timestamp, blockNumber)       
-
-        logger.info(f"TRACE REPLAY: {c_tmp} transactions of {len(df_txs_lx)} transactions; loop number: {loop_round}")
-
-        c_tmp_minus = c_tmp
-        c_tmp+=increment
-        df_trace_lx = pd.concat([df_trace_lx, df_trace_lx_tmp], axis=0)
-        if c_tmp > c_max:
-            c_tmp = c_max
-    
-    toc = time.time()
-
-    logger.debug(f"SPEEDTEST: Time to recompute and transform transaction traces: {toc - tic}")
-    logger.info(f"Number of traces for this level: {len(df_trace_lx)}")
-
-    df_trace_lx.reset_index(inplace=True, drop=True)
-    
-    return df_trace_lx
-
-
-def insert_tracePos(data, trace_pos_counter=[0]):
-    """
-    Recursively inserts a 'tracePos' attribute into dictionaries within a nested structure.
-
-    Args:
-        data (dict | list): The nested data structure.
-        trace_pos_counter (list of int): A list with a single element used to keep track
-                                         of the current tracePos value across recursive calls.
-                                         Using a list to allow modifications within function calls.
-    """
-    
     if 'result' in data:
-        data['result'] = insert_tracePos(data['result'], trace_pos_counter=[0])
+        insert_tracePos(data['result'], [0], ordering)
         return data
-    
-    if isinstance(data, dict):
-        # Increment the tracePos counter for each dictionary processed
-        trace_pos_counter[0] += 1
-        data['tracePos'] = trace_pos_counter[0]
-        
-        # Recursively process nested dictionaries and lists
-        for key in ['calls', 'logs']:
-            if key in data:
-                insert_tracePos(data[key], trace_pos_counter)
-                
-    elif isinstance(data, list):
-        # Process each item in the list
-        for item in data:
-            # The first item in a "calls" list is not a dict but should have "tracePos"
-            if isinstance(item, dict) or isinstance(item, list):
-                insert_tracePos(item, trace_pos_counter)
-    
+
+    trace_pos_counter[0] += 1
+    data['tracePos'] = trace_pos_counter[0]
+    data.setdefault('orderExact', True)
+
+    ordered, exact = _children_in_order(data, ordering)
+    for kind, node in ordered:
+        node['orderExact'] = exact
+        if kind == "call":
+            insert_tracePos(node, trace_pos_counter, ordering)
+        else:
+            trace_pos_counter[0] += 1
+            node['tracePos'] = trace_pos_counter[0]
     return data
 
 
-def insert_tracePosDepth(item, parent_index=''):
-    # Define the base case: if item is None, just return
-    if 'result' in item:
-        item['result'] = insert_tracePosDepth(item['result'], parent_index)
-        return item
-    
-    if item is None:
-        return
-    
-    # Initialize a counter for both calls and logs
-    call_counter = 1
-    log_counter = 1
-    
-    # Check if we're at the top-level, which is indicated by an empty parent_index
-    if not parent_index:
-        # At top level, the trace position depth starts with 1
-        item['tracePosDepth'] = '1'
-    else:
-        # Otherwise, use the parent_index directly provided
-        item['tracePosDepth'] = parent_index
-    
-    # Process 'calls', if any, recursively
-    if 'calls' in item:
-        for call in item['calls']:
-            # Construct the new parent_index for the recursive call
-            new_parent_index = f"{item['tracePosDepth']}.{call_counter}"
-            insert_tracePosDepth(call, new_parent_index)
-            call_counter += 1
-    
-    # Process 'logs', if any, after processing all calls to continue the numbering
-    if 'logs' in item:
-        for log in item['logs']:
-            # Logs follow calls, hence the numbering continues from there
-            log_index = f"{item['tracePosDepth']}.{len(item.get('calls', [])) + log_counter}"
-            log['tracePosDepth'] = log_index
-            # This assumes we might want to clear or update topics in some way; keeping as-is for this example
-            log_counter += 1
+def insert_tracePosDepth(item, parent_index='', ordering=ORDERING_PAPER):
+    """
+    Annotates every operation with 'tracePosDepth': a hierarchical identifier ("1.3.2")
+    carrying the parent's identifier plus the operation's 1-based rank among the
+    parent's children under the given ordering mode.
 
+    Args:
+        item (dict): A trace result, or the full JSON-RPC response containing 'result'.
+        parent_index (str): identifier of the parent operation ('' at the root).
+        ordering (str): ORDERING_PAPER (default) or ORDERING_EXACT (validation only).
+    """
+    if item is None:
+        return item
+    if 'result' in item:
+        insert_tracePosDepth(item['result'], parent_index, ordering)
+        return item
+
+    item['tracePosDepth'] = parent_index if parent_index else '1'
+
+    ordered, _exact = _children_in_order(item, ordering)
+    for rank, (kind, node) in enumerate(ordered, start=1):
+        child_id = f"{item['tracePosDepth']}.{rank}"
+        if kind == "call":
+            insert_tracePosDepth(node, child_id, ordering)
+        else:
+            node['tracePosDepth'] = child_id
     return item
 
 
-def insert_eventPos(data):
+def depth_sort_key(trace_pos_depth):
+    """Sortable form of a tracePosDepth string: '1.10.2' -> (1, 10, 2).
+
+    Guards against the lexicographic trap ('1.10' < '1.2' as strings).
     """
-    Recursively inserts an 'eventPos' attribute to each dictionary within a 'logs' list,
-    with an incremental value starting from 1 for each 'logs' list encountered.
+    return tuple(int(part) for part in str(trace_pos_depth).split("."))
+
+
+def flatten(trace_json_lx):
+    """
+    Flattens an annotated trace (see insert_tracePos / insert_tracePosDepth) into a
+    list of per-operation records, one per call frame or log entry, ordered by their
+    assigned tracePos.
+
+    Replaces the earlier flatten/flatten_nested/explode_df combination: records are
+    emitted directly from the JSON tree instead of via repeated DataFrame explosion,
+    which also removes the row-identity hazards of index-based processing.
 
     Args:
-        data (dict | list): The data containing nested dictionaries and/or lists.
-    """
-    if isinstance(data, dict):
-        # Iterate over each key-value pair in the dictionary
-        for key, value in data.items():
-            if key == 'logs' and isinstance(value, list):
-                # If the current key is 'logs' and its value is a list, insert 'eventPos'
-                for i, item in enumerate(value, start=1):
-                    item['eventPos'] = i
-            else:
-                # Otherwise, recursively process the value
-                insert_eventPos(value)
-    elif isinstance(data, list):
-        # If the data is a list, recursively process each item in the list
-        for item in data:
-            insert_eventPos(item)
-
-    return data
-
-# Input: JSON file with nested data containing the calls.
-# Goal: DataFrame with call-type, sender and receiver
-# https://stackoverflow.com/questions/72633357/how-to-identify-and-explode-a-nested-json-file-as-columns-of-a-dataframe
-
-
-def flatten(trace_json_lx, new_trace_json_lx={}):
-    """
-    Flattens a nested dictionary by recursively merging its nested structures into the parent dictionary.
-
-    This function traverses a nested dictionary (trace_json_lx) and transfers all key-value pairs to a new, 
-    initially empty dictionary (new_trace_json_lx). If a value is a dictionary itself, the function recurses 
-    into it to flatten its contents as well. 
-
-    Args:
-        trace_json_lx (dict): The nested dictionary to be flattened. This dictionary represents a trace JSON
-                              structure that potentially contains other dictionaries as values for some of its keys.
-        new_trace_json_lx (dict, optional): The dictionary into which the flattened content is merged. This 
-                                            parameter allows the function to build up the flattened result across 
-                                            recursive calls. It defaults to an empty dictionary when the function 
-                                            is initially called.
+        trace_json_lx (dict): A trace result, or the full JSON-RPC response.
 
     Returns:
-        dict: A dictionary with the same content as trace_json_lx, but flattened. 
+        list[dict]: per-operation records carrying the frame/log attributes plus
+        tracePos, tracePosDepth and orderExact. Log records expose the tracer's
+        receipt-level log index as 'logIndex' where available (validation data; not a
+        published-log attribute).
     """
-    for key, value in trace_json_lx.items():
-        if isinstance(value, dict):
-            flatten(value, new_trace_json_lx)
-        if isinstance(value, str) or isinstance(value, int) or isinstance(value, list):
-            new_trace_json_lx[key] = value
-    return new_trace_json_lx
+    root = trace_json_lx['result'] if 'result' in trace_json_lx else trace_json_lx
+    if "tracePos" not in root:
+        raise ValueError("flatten() requires an annotated trace; call insert_tracePos() "
+                         "and insert_tracePosDepth() first")
+    records = []
 
-# Alternatively (but missing the first internal transaction):
-# df_normalized_from_json = pd.json_normalize(trace_json_l1["result"]["calls"])
+    def emit(node, is_log):
+        rec = {k: v for k, v in node.items() if k not in NESTED_KEYS}
+        if is_log and "index" in rec:
+            rec["logIndex"] = _hex_to_int(rec.pop("index"))
+        rec.pop("position", None)
+        records.append(rec)
+
+    def visit(frame):
+        emit(frame, is_log=False)
+        for c in frame.get("calls", []):
+            visit(c)
+        for l in frame.get("logs", []):
+            emit(l, is_log=True)
+
+    visit(root)
+    records.sort(key=lambda r: r["tracePos"])
+    return records
 
 
-def flatten_nested(df_flat_json_tmp, df_trace_l1, tx_hash, functionName, timestamp, blockNumber):
-    """Function to flatten nested JSON arguments in a dataframe column named "calls" (if it exists)
+def tx_to_trace(df_txs_lx, node_url, ordering=ORDERING_PAPER, max_attempts=15,
+                workers=TRACE_WORKERS):
+    """
+    Converts a DataFrame of transactions into a DataFrame of transaction trace
+    operations by retrieving and flattening the trace of every transaction.
+
     Args:
-        DataFrame with nested JSON arguments
-    Output:
-        DataFrame with data organized table like only (nothing nested)
+        df_txs_lx (pd.DataFrame): transactions with at least 'hash', 'timeStamp' and
+            'blockNumber' columns.
+        node_url (str): URL of an archive node with Geth-style debug functionality.
+        ordering (str): ORDERING_PAPER (default; the only mode for published
+            artifacts) or ORDERING_EXACT (validation only). See module docstring.
+        max_attempts (int): retry budget per trace request (passed to json_retriever).
+        workers (int): concurrent trace requests (1 = sequential). The result does
+            not depend on it.
+
+    Returns:
+        pd.DataFrame: one row per operation, annotated with tracePos, tracePosDepth,
+        orderExact, hash, timeStamp and blockNumber.
+
+    Raises:
+        RuntimeError: immediately when a transaction's trace cannot be retrieved
+        (fail-fast policy: silent gaps must be impossible; with part-file
+        checkpointing a rerun resumes cheaply at the failed batch).
     """
+    tic = time.time()
+    all_records = []
+    hashes = [str(h) for h in df_txs_lx['hash']]
 
-    # check if there are any internal transactions ("calls" appear in the flattened JSON)
-    # https://stackoverflow.com/questions/26577516/how-to-test-if-a-string-contains-one-of-the-substrings-in-a-list-in-pandas
-#    nested_cols = ['calls', 'topics', 'logs']
-    nested_cols = ['calls', 'logs']
-    # boolean_list = df_flat_json_tmp.columns.str.contains('|'.join(nested_cols))
-    # if there are internal transactions, fetch them
-    df_trace_l1_tmp = df_flat_json_tmp.copy()
-    #i = 0
-    # as long as the dataframe contains columns that are known to be nested, execute the following routine
-    while True in df_flat_json_tmp.columns.str.contains('|'.join(nested_cols)):
-        # Unnest the nested columns
-        # Note that explode_df() creates a dataframe on the basis of the contents of nested columns, i.e., if additional nested columns ("calls" or "logs") only appear in the exploded dataframe if they are further nested 
-        df_explode_tmp=explode_df(df_flat_json_tmp, nested_cols) 
-        df_flat_json_tmp = df_explode_tmp
-        df_trace_l1_tmp = pd.concat([df_trace_l1_tmp, df_explode_tmp], axis=0)
-        # Once nested columns no longer appear in the dataframe, stop the loop
-        #boolean_list = df_flat_json_tmp.columns.str.contains('|'.join(nested_cols))
+    # traces are fetched concurrently (the node does the work; the client mostly
+    # waits); map() yields them in input order, so annotation and output are
+    # unchanged. On failure, queued requests are cancelled; in-flight ones finish
+    # their own retries.
+    executor = ThreadPoolExecutor(max_workers=max(1, workers))
+    try:
+        traces = executor.map(lambda h: json_retriever(h, node_url, max_attempts=max_attempts),
+                              hashes)
+        for i, (tx_hash, (trace_json_lx, json_flag)) in enumerate(zip(hashes, traces)):
+            row = df_txs_lx.iloc[i]
+            if not json_flag:
+                raise RuntimeError(
+                    f"Trace retrieval failed for {tx_hash} "
+                    f"(transaction {i + 1} of {len(df_txs_lx)})")
+            insert_tracePos(trace_json_lx, ordering=ordering)
+            insert_tracePosDepth(trace_json_lx, ordering=ordering)
+            records = flatten(trace_json_lx)
+            for rec in records:
+                rec["hash"] = tx_hash
+                # canonical numeric types regardless of the caller's metadata dtypes
+                # (a string-typed input column must not leak into the trace dataset)
+                rec["timeStamp"] = int(row['timeStamp'])
+                rec["blockNumber"] = int(row['blockNumber'])
+            all_records.extend(records)
+            if (i + 1) % 1000 == 0:
+                logger.info(f"TRACE REPLAY: {i + 1} of {len(df_txs_lx)} transactions")
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
-    # Remove columns with non-helpful information
-    if "index" in df_trace_l1_tmp.columns.values.tolist():
-        df_trace_l1_tmp.drop(["index"], inplace=True, axis=1)
-    if "jsonrpc" in df_trace_l1_tmp.columns.values.tolist():
-        df_trace_l1_tmp.drop(["jsonrpc"], inplace=True, axis=1)
-    if "id" in df_trace_l1_tmp.columns.values.tolist():
-        df_trace_l1_tmp.drop(["id"], inplace=True, axis=1)
-    # The columns "calls" and "logs" did hold sections of the JSON-dictionary that were to be unfolded during "explode_df()". The two colums are no longer needed, as the unfolded information is now available in the dataframe
-    if "calls" in df_trace_l1_tmp.columns.values.tolist():
-        df_trace_l1_tmp.drop(["calls"], inplace=True, axis=1)
-    if "logs" in df_trace_l1_tmp.columns.values.tolist():
-        df_trace_l1_tmp.drop(["logs"], inplace=True, axis=1)
-        
-    df_trace_l1_tmp["hash"]=tx_hash
-    df_trace_l1_tmp["functionName"]=functionName
-    df_trace_l1_tmp["timeStamp"]=timestamp
-    df_trace_l1_tmp["blockNumber"]=blockNumber
-    
-    df_trace_l1 = pd.concat([df_trace_l1, df_trace_l1_tmp], axis=0)
-    return df_trace_l1
-
-
-def explode_df (df_flat_json, nested_cols):
-    """Helper function.
-
-     Args:
-         df_flat_json: DataFrame with content of the original JSON file flattened on first level but with nested column entries
-
-     Returns:
-        Flattened dataframe on level +1.
-    """
-    df_out = pd.DataFrame([])
-    
-    for item in nested_cols:
-        # if the item in qustion is contained do ...
-        if True in df_flat_json.columns.str.contains(item):
-            dfe = df_flat_json.explode(item)
-            # look for cells that have non-exploded data (are not empty)
-            # access the cells, access the data, make it an array and attach it to the dataframe
-            mask = dfe[item].isna()
-            df = pd.DataFrame([i for i in dfe[~mask][item].to_numpy()]).reset_index(drop=True)
-            df_out = pd.concat([df_out, df], axis=0)
-        else: 
-            df_out=df_out
-
-    return df_out
+    df_trace_lx = pd.DataFrame(all_records)
+    logger.debug(f"SPEEDTEST: Time to recompute and transform transaction traces: {time.time() - tic}")
+    logger.info(f"Number of operations for this level: {len(df_trace_lx)}")
+    return df_trace_lx
