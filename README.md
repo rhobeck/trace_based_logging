@@ -128,3 +128,27 @@ The implementation of this repository was developed in collaboration with Claude
 ## License
 
 This project is distributed under the [MIT license](LICENSE).
+## Reproduce the corrected case-study figures
+
+Use Python 3.12 with `requirements.txt`, plus `duckdb==2.0.0`, and install the
+Graphviz `dot` executable. The analysis reads the relational parquet tables:
+
+```console
+python regenerate_figures.py --log /path/to/relational_tables --paper /path/to/paper --output /path/to/results --write-paper
+```
+
+This replaces only the nine existing histogram CSVs and the two existing graph
+PDFs. Without `--write-paper`, all outputs stay in the results directory. Optional
+`--baseline /path/to/original/paper` produces per-bin comparisons; preserve the
+original inputs before replacing them. Full distributions, graph counts and
+median durations, and analysis totals are also written to the results directory.
+
+The script excludes reverted events before deriving co-occurrences, deduplicates
+event/object pairs, uses the recorded account type for EOA analyses, and excludes
+market addresses from contract counterparts. Durations use block timestamps;
+within-block order uses transaction index and trace position. Histograms retain
+at most ten most frequent bins and the duration panel uses positive lifetimes
+(month = 30 days, year = 365 days). These display conventions reconstruct the
+published panels because their original analysis code is unavailable. Graphs
+use the paper's selected activities and MARKET/ORDER types, median performance,
+and a 50-event-couple display threshold; missing types are not manufactured.
