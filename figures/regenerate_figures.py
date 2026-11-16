@@ -6,17 +6,15 @@ The corrected paper draws Figures 5-9 from the full distributions written here
 Requires the normal project dependencies plus duckdb==2.0.0 and Graphviz.
 Example (from the repository root):
   python figures/regenerate_figures.py --log /path/to/relational_tables \
-      --paper /path/to/paper --output /path/to/results \
-      --baseline /path/to/published/paper --write-paper
+      --output /path/to/results --baseline /path/to/published/paper
 
-No source data are changed. Only existing CSV/PDF assets are replaced in the paper.
+No source data are changed; all outputs are written to the output folder.
 The old plotting code is unavailable: the ten most frequent bins and positive
 lifetimes reconstruct its displayed scope. A month is 30 days, a year 365 days.
 All full distributions and zero-duration counts are also exported for transparency.
 """
 import argparse
 import json
-import shutil
 from pathlib import Path
 from statistics import median
 
@@ -28,10 +26,8 @@ from pm4py.visualization.ocel.ocdfg.variants import classic
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--log', type=Path, required=True)
-p.add_argument('--paper', type=Path, required=True)
 p.add_argument('--output', type=Path, required=True)
 p.add_argument('--baseline', type=Path, help='Optional original paper assets for comparisons')
-p.add_argument('--write-paper', action='store_true')
 a = p.parse_args()
 for sub in ('data', 'figures', 'full'):
     (a.output / sub).mkdir(parents=True, exist_ok=True)
@@ -181,11 +177,4 @@ for annotation, suffix in [('frequency','freq'),('performance','perf')]:
 pd.DataFrame(deltas,columns=['series','bin','published','corrected','delta','shown_corrected']).to_csv(
     a.output/'histogram_deltas.csv',index=False)
 (a.output/'summary.json').write_text(json.dumps(stats,indent=2,default=int)+'\n')
-if a.write_paper:
-    for sub in ('data','figures'):
-        for source in (a.output/sub).iterdir():
-            target = a.paper/sub/source.name
-            if not target.is_file():
-                raise FileNotFoundError(f'Refusing to add a new paper asset: {target}')
-            shutil.copyfile(source,target)
 print(json.dumps(stats,indent=2,default=int))

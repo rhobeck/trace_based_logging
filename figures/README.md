@@ -34,33 +34,23 @@ LOG=/path/to/transformation/log_paper
 PUBLISHED=/path/to/published/paper
 DEPS="--with duckdb==2.0.0 --with pandas==3.1.0 --with pm4py==2.7.23.11"
 
-uv run --no-project $DEPS python figures/regenerate_figures.py --log $LOG --paper /tmp/unused \
+uv run --no-project $DEPS python figures/regenerate_figures.py --log $LOG \
     --output figures/output/regenerate_figures --baseline $PUBLISHED
 python3 figures/fig5-9_data.py figures/output/regenerate_figures figures/output/paper
 uv run --no-project $DEPS python figures/fig10_ocdfg.py $LOG figures/output/paper
 ```
 
-`--baseline` points at the sources of the published paper (its `data/` folder) and only
-feeds `histogram_deltas.csv`; `--paper` is required by the script but unused without
-`--write-paper`. Do not use `--write-paper` on the corrected paper: it would replace the
-paper's full distributions with the ten most frequent bins.
+`--baseline` is optional: it points at the sources of the published paper (its `data/`
+folder) and only feeds `histogram_deltas.csv`.
 
 The files in `output/paper/` are the ones used in the corrected paper.
 
 ## Step 1 in detail: `regenerate_figures.py`
 
-Use Python 3.12 with `requirements.txt`, plus `duckdb==2.0.0`, and install the
-Graphviz `dot` executable. The analysis reads the relational parquet tables:
-
-```console
-python figures/regenerate_figures.py --log /path/to/relational_tables --paper /path/to/paper --output /path/to/results --write-paper
-```
-
-This replaces only the nine existing histogram CSVs and the two existing graph
-PDFs. Without `--write-paper`, all outputs stay in the results directory. Optional
-`--baseline /path/to/original/paper` produces per-bin comparisons; preserve the
-original inputs before replacing them. Full distributions, graph counts and
-median durations, and analysis totals are also written to the results directory.
+The analysis reads the relational parquet tables. All outputs stay in the output
+folder: the histograms, the full distributions, graph counts and median durations,
+and analysis totals. Optional `--baseline /path/to/original/paper` produces per-bin
+comparisons.
 
 The script excludes reverted events before deriving co-occurrences, deduplicates
 event/object pairs, uses the recorded account type for EOA analyses, and excludes
