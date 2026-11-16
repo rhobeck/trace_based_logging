@@ -189,3 +189,7 @@ paper/
 # run logs and editor settings
 logs/
 .vscode/
+
+# the data behind the paper figures is tracked (exceptions to data/ and paper/ above)
+!figures/output/paper/
+!figures/output/regenerate_figures/data/

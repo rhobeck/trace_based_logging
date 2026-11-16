@@ -1,0 +1,7 @@
+side,type,activity,events,shown
+end_activities,MARKET,call to log initial report submission,66,True
+end_activities,MARKET,call to log market finalization,491,True
+end_activities,MARKET,complete dispute,1,False
+end_activities,MARKET,redeem as initial reporter,2062,True
+end_activities,MARKET,redeem dispute crowdsourcer,185,True
+start_activities,MARKET,call to log initial report submission,2805,True

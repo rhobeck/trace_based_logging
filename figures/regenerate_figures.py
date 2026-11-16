@@ -1,10 +1,13 @@
-"""Reproduce the corrigendum's nine histogram inputs and two OC-DFGs.
+"""Compute the nine histogram inputs and the two OC-DFGs on the corrected log.
+
+The corrected paper draws Figures 5-9 from the full distributions written here
+(through fig5-9_data.py) and Figure 10 from fig10_ocdfg.py; see README.md.
 
 Requires the normal project dependencies plus duckdb==2.0.0 and Graphviz.
-Example (from this repository):
-  python regenerate_figures.py --log ../data/log/relational_tables \
-      --paper ../65f02e3d1f5694e813bf69bb --output ../figure_results \
-      --baseline ../work/before --write-paper
+Example (from the repository root):
+  python figures/regenerate_figures.py --log /path/to/relational_tables \
+      --paper /path/to/paper --output /path/to/results \
+      --baseline /path/to/published/paper --write-paper
 
 No source data are changed. Only existing CSV/PDF assets are replaced in the paper.
 The old plotting code is unavailable: the ten most frequent bins and positive
@@ -137,7 +140,7 @@ for name, focal, partner in (
         SELECT count(DISTINCT oid) FROM rel r WHERE typ='{focal}'
         AND NOT EXISTS (SELECT 1 FROM degrees d WHERE d.focal=r.oid)''').fetchall()[0][0]
 
-# Same selected activities and object types as the paper; absent types stay absent.
+# Same selected activities and object types as the published paper; absent types stay absent.
 activities = ['delegate call to report','call to log initial report submission',
     'create dispute','call to create dispute','contribute to dispute','redeem dispute',
     'complete dispute','call to log market finalization','redeem as initial reporter',

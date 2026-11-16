@@ -1,0 +1,19 @@
+type,source,target,event_couples,median_seconds,shown
+MARKET,call to log initial report submission,call to log market finalization,2455,1074502.0,True
+MARKET,call to log initial report submission,create dispute,284,438830.0,True
+MARKET,call to log market finalization,redeem as initial reporter,1996,24860.5,True
+MARKET,call to log market finalization,redeem dispute crowdsourcer,251,0.0,True
+MARKET,complete dispute,call to log market finalization,183,1208530.0,True
+MARKET,complete dispute,create dispute,594,581418.0,True
+MARKET,complete dispute,redeem dispute crowdsourcer,4,135292.0,False
+MARKET,contribute to dispute,call to log market finalization,97,336262.0,True
+MARKET,contribute to dispute,complete dispute,782,0.0,True
+MARKET,contribute to dispute,contribute to dispute,698,14663.0,True
+MARKET,contribute to dispute,create dispute,25,1569.0,False
+MARKET,create dispute,contribute to dispute,904,0.0,True
+MARKET,redeem as initial reporter,redeem as initial reporter,1117,0.0,True
+MARKET,redeem as initial reporter,redeem dispute crowdsourcer,81,245346.0,True
+MARKET,redeem dispute crowdsourcer,call to log market finalization,3,586820.0,False
+MARKET,redeem dispute crowdsourcer,create dispute,1,463663.0,False
+MARKET,redeem dispute crowdsourcer,redeem as initial reporter,147,293268.0,True
+MARKET,redeem dispute crowdsourcer,redeem dispute crowdsourcer,1076,901.5,True

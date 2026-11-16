@@ -116,6 +116,24 @@ The output files are saved to [resources](resources), and therein to the output 
 
 Two caches are shared across runs in `resources/cache`: the transaction receipts fetched from the node (`receipts.parquet`) and the contract ABIs fetched from Etherscan (`abi_cache.parquet`). A run fetches only what the caches lack. The folder can be deleted; the next run fetches again.
 
+## Correction of the event log (2026)
+
+The event log published with the paper contains 2,016,339 of the intended 11,074,940
+events. The log construction defined the event IDs based on a row index that was not
+unique after the five tables of operations had been concatenated. Events of different
+tables received the same ID, and only one event per ID entered the event log. Events
+without a relationship to an object were left out as well.
+
+This repository holds the corrected implementation: event IDs are defined based on the
+transaction hash and the position in the transaction trace, and every event is related
+to at least one object. The corrected event log contains 11,074,965 events; 25 of them
+stem from two failed transactions that the original data extraction had missed.
+
+- Corrected event log: TODO (Zenodo link)
+- Code that constructed the published event log: tag
+  [`EMISAJ-2025`](https://github.com/rhobeck/trace_based_logging/tree/EMISAJ-2025)
+- Data and code of the figures in the corrected paper: [figures](figures)
+
 ## Related publications
 
 Hobeck, R., Berti, A., Weber, I., & van der Aalst, W. M. P. (2025). Object-centric process mining for blockchain applications: Extracting and representing Ethereum execution data in OCEL 2.0. Enterprise Modelling and Information Systems Architectures.
@@ -128,27 +146,3 @@ The implementation of this repository was developed in collaboration with Claude
 ## License
 
 This project is distributed under the [MIT license](LICENSE).
-## Reproduce the corrected case-study figures
-
-Use Python 3.12 with `requirements.txt`, plus `duckdb==2.0.0`, and install the
-Graphviz `dot` executable. The analysis reads the relational parquet tables:
-
-```console
-python regenerate_figures.py --log /path/to/relational_tables --paper /path/to/paper --output /path/to/results --write-paper
-```
-
-This replaces only the nine existing histogram CSVs and the two existing graph
-PDFs. Without `--write-paper`, all outputs stay in the results directory. Optional
-`--baseline /path/to/original/paper` produces per-bin comparisons; preserve the
-original inputs before replacing them. Full distributions, graph counts and
-median durations, and analysis totals are also written to the results directory.
-
-The script excludes reverted events before deriving co-occurrences, deduplicates
-event/object pairs, uses the recorded account type for EOA analyses, and excludes
-market addresses from contract counterparts. Durations use block timestamps;
-within-block order uses transaction index and trace position. Histograms retain
-at most ten most frequent bins and the duration panel uses positive lifetimes
-(month = 30 days, year = 365 days). These display conventions reconstruct the
-published panels because their original analysis code is unavailable. Graphs
-use the paper's selected activities and MARKET/ORDER types, median performance,
-and a 50-event-couple display threshold; missing types are not manufactured.

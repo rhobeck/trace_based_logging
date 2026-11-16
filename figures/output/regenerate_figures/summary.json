@@ -1,0 +1,94 @@
+{
+  "events_total": 11074965,
+  "events_effective": 10984054,
+  "inactive_objects": {
+    "TRANSACTION": 9372,
+    "CONTRACT": 1,
+    "ORDER": 77,
+    "MARKET": 1,
+    "CALLFRAME": 46024,
+    "EOA": 63
+  },
+  "excluded_contract_accounts_labelled_EOA": 5674,
+  "effective_o2o": 5064342,
+  "effective_object_changes": 5986,
+  "lifecycle": {
+    "EOA": {
+      "objects": 117443.0,
+      "min_activities": 1.0,
+      "max_activities": 54.0,
+      "zero_duration": 92685.0,
+      "over_week": 19817.0,
+      "over_month": 17016.0,
+      "max_duration_seconds": 73835432.0
+    },
+    "MARKET": {
+      "objects": 2897.0,
+      "min_activities": 16.0,
+      "max_activities": 87.0,
+      "zero_duration": 22.0,
+      "over_week": 2838.0,
+      "over_month": 2265.0,
+      "max_duration_seconds": 73301055.0
+    },
+    "ORDER": {
+      "objects": 24002.0,
+      "min_activities": 1.0,
+      "max_activities": 22.0,
+      "zero_duration": 636.0,
+      "over_week": 5874.0,
+      "over_month": 2795.0,
+      "max_duration_seconds": 49185642.0
+    }
+  },
+  "interactions": {
+    "eoa_market": {
+      "objects": 3299.0,
+      "minimum": 1.0,
+      "maximum": 499.0,
+      "median": 1.0,
+      "pairs": 15657.0,
+      "one": 1701.0,
+      "at_most_two": 2283.0,
+      "without_counterpart": 114144
+    },
+    "market_eoa": {
+      "objects": 2897.0,
+      "minimum": 1.0,
+      "maximum": 329.0,
+      "median": 2.0,
+      "pairs": 15657.0,
+      "one": 665.0,
+      "at_most_two": 1450.0,
+      "without_counterpart": 0
+    },
+    "contract_market": {
+      "objects": 2897.0,
+      "minimum": 17.0,
+      "maximum": 87.0,
+      "median": 26.0,
+      "pairs": 75563.0,
+      "one": 0.0,
+      "at_most_two": 0.0,
+      "without_counterpart": 0
+    },
+    "order_contract": {
+      "objects": 24002.0,
+      "minimum": 2.0,
+      "maximum": 8.0,
+      "median": 4.0,
+      "pairs": 107518.0,
+      "one": 0.0,
+      "at_most_two": 2.0,
+      "without_counterpart": 0
+    }
+  },
+  "dispute_objects": {
+    "MARKET": 2805
+  },
+  "dispute_selected_activities_without_objects": [
+    "call to create dispute",
+    "delegate call to report",
+    "redeem dispute"
+  ]
+}

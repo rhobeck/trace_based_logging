@@ -1,0 +1,41 @@
+type,source,target,event_couples,median_seconds,shown
+EOA,call to log dispute crowdsourcer redemption,call to log dispute crowdsourcer tokens burned,858,119.0,True
+EOA,call to log dispute crowdsourcer redemption,call to log dispute crowdsourcer tokens minted,204,414409.5,True
+EOA,call to log dispute crowdsourcer redemption,call to log initial report submission,87,547114.0,False
+EOA,call to log dispute crowdsourcer redemption,redeem as initial reporter,101,697.0,False
+EOA,call to log dispute crowdsourcer tokens burned,call to log dispute crowdsourcer redemption,1412,0.0,True
+EOA,call to log dispute crowdsourcer tokens minted,contribute to dispute,1552,0.0,True
+EOA,call to log initial report submission,call to log dispute crowdsourcer tokens burned,45,213021.0,False
+EOA,call to log initial report submission,call to log dispute crowdsourcer tokens minted,147,207322.0,False
+EOA,call to log initial report submission,call to log initial report submission,2020,620.5,True
+EOA,call to log initial report submission,redeem as initial reporter,374,923559.5,True
+EOA,contribute to dispute,call to log dispute crowdsourcer tokens burned,355,861071.0,True
+EOA,contribute to dispute,call to log dispute crowdsourcer tokens minted,874,1650.0,True
+EOA,contribute to dispute,call to log initial report submission,122,361047.5,False
+EOA,contribute to dispute,redeem as initial reporter,107,148266.0,False
+EOA,redeem as initial reporter,call to log dispute crowdsourcer tokens burned,148,73.0,False
+EOA,redeem as initial reporter,call to log dispute crowdsourcer tokens minted,102,452331.5,False
+EOA,redeem as initial reporter,call to log initial report submission,199,333861.0,True
+EOA,redeem as initial reporter,redeem as initial reporter,2678,5.0,True
+MARKET,call to log dispute crowdsourcer redemption,call to log dispute crowdsourcer redemption,1076,901.5,True
+MARKET,call to log dispute crowdsourcer redemption,call to log market finalization,3,586820.0,False
+MARKET,call to log dispute crowdsourcer redemption,create dispute,1,463663.0,False
+MARKET,call to log dispute crowdsourcer redemption,redeem as initial reporter,147,293268.0,False
+MARKET,call to log initial report submission,call to log market finalization,2455,1074502.0,True
+MARKET,call to log initial report submission,create dispute,284,438830.0,True
+MARKET,call to log market finalization,call to log dispute crowdsourcer redemption,251,0.0,True
+MARKET,call to log market finalization,redeem as initial reporter,1996,24860.5,True
+MARKET,complete dispute,call to log dispute crowdsourcer redemption,4,135292.0,False
+MARKET,complete dispute,call to log market finalization,183,1208530.0,True
+MARKET,complete dispute,create dispute,594,581418.0,True
+MARKET,contribute to dispute,call to log market finalization,97,336262.0,False
+MARKET,contribute to dispute,complete dispute,782,0.0,True
+MARKET,contribute to dispute,contribute to dispute,698,14663.0,True
+MARKET,contribute to dispute,create dispute,25,1569.0,False
+MARKET,create dispute,contribute to dispute,904,0.0,True
+MARKET,redeem as initial reporter,call to log dispute crowdsourcer redemption,81,245346.0,False
+MARKET,redeem as initial reporter,redeem as initial reporter,1117,0.0,True
+TOKEN,call to log dispute crowdsourcer redemption,call to log dispute crowdsourcer tokens burned,655,4929.0,True
+TOKEN,call to log dispute crowdsourcer tokens burned,call to log dispute crowdsourcer redemption,1412,0.0,True
+TOKEN,call to log dispute crowdsourcer tokens minted,call to log dispute crowdsourcer tokens burned,757,2178969.0,True
+TOKEN,call to log dispute crowdsourcer tokens minted,call to log dispute crowdsourcer tokens minted,695,14593.0,True

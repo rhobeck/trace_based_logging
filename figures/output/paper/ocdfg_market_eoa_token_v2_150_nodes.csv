@@ -1,0 +1,10 @@
+activity,events
+call to log dispute crowdsourcer redemption,1412
+call to log dispute crowdsourcer tokens burned,1412
+call to log dispute crowdsourcer tokens minted,1591
+call to log initial report submission,2805
+call to log market finalization,2738
+complete dispute,782
+contribute to dispute,1602
+create dispute,904
+redeem as initial reporter,3260
