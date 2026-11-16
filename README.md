@@ -134,6 +134,10 @@ stem from two failed transactions that the original data extraction had missed.
   [`EMISAJ-2025`](https://github.com/rhobeck/trace_based_logging/tree/EMISAJ-2025)
 - Data and code of the figures in the corrected paper: [figures](figures)
 
+The figure analyses were implemented by
+[Alessandro Berti](https://github.com/fit-alessandro-berti)
+([figures/regenerate_figures.py](figures/regenerate_figures.py)).
+
 ## Related publications
 
 Hobeck, R., Berti, A., Weber, I., & van der Aalst, W. M. P. (2025). Object-centric process mining for blockchain applications: Extracting and representing Ethereum execution data in OCEL 2.0. Enterprise Modelling and Information Systems Architectures.

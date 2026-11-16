@@ -1,5 +1,8 @@
 """Compute the nine histogram inputs and the two OC-DFGs on the corrected log.
 
+Author: Alessandro Berti (https://github.com/fit-alessandro-berti);
+option --write-paper removed by Richard Hobeck, Nov 2026.
+
 The corrected paper draws Figures 5-9 from the full distributions written here
 (through fig5-9_data.py) and Figure 10 from fig10_ocdfg.py; see README.md.
 
