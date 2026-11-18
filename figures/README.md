@@ -1,9 +1,8 @@
 # Figures of the corrected paper
 
 The data and the graphs behind Figures 5–10 of the corrected paper, computed on the
-corrected event log (the relational tables in `transformation/log_paper` of a run).
-Figures 5–9 are drawn in the paper's LaTeX source from the CSV files; Figure 10 is
-included as PDF.
+corrected event log. Figures 5–9 are drawn in the paper's LaTeX source from the CSV
+files; Figure 10 is included as PDF.
 
 Figures 5–9 repeat the analyses of the published paper on the corrected event log.
 Figure 10 shows the dispute resolution process over markets, EOAs, and dispute
@@ -24,24 +23,37 @@ the bars the figures show beyond them: a bin 0 in Figure 5 (objects whose events
 in one block), a bar at 0 in Figure 7 (EOAs without a market), and one tail bar for the
 values above 100 in Figures 7 and 8. Both zero counts are taken from `summary.json`.
 
+## Input
+
+The scripts read the event log as relational tables (`events`, `objects`, `e2o`, `o2o`,
+`object_changes`, as parquet files in one folder). There are two ways to obtain them:
+
+- From the published event log (OCEL 2.0 SQLite, see the main README):
+  `log_tables_from_sqlite.py` writes the tables from the SQLite file, with the columns
+  the scripts use.
+- From a run of the pipeline: the transformation stage writes the tables to
+  `transformation/log_paper`.
+
 ## Running
 
 From the repository root, with the project dependencies plus `duckdb==2.0.0`, and with
 Graphviz (`dot`) and TeX Live's `pdfcrop` on the PATH:
 
 ```console
-LOG=/path/to/transformation/log_paper
+LOG=/path/to/log_tables
 PUBLISHED=/path/to/published/paper
 DEPS="--with duckdb==2.0.0 --with pandas==3.1.0 --with pm4py==2.7.23.11"
 
+uv run --no-project $DEPS python figures/log_tables_from_sqlite.py /path/to/event_log.sqlite $LOG
 uv run --no-project $DEPS python figures/regenerate_figures.py --log $LOG \
     --output figures/output/regenerate_figures --baseline $PUBLISHED
 python3 figures/fig5-9_data.py figures/output/regenerate_figures figures/output/paper
 uv run --no-project $DEPS python figures/fig10_ocdfg.py $LOG figures/output/paper
 ```
 
-`--baseline` is optional: it points at the sources of the published paper (its `data/`
-folder) and only feeds `histogram_deltas.csv`.
+The first command is not needed when `LOG` points at the `transformation/log_paper`
+folder of a run. `--baseline` is optional: it points at the sources of the published
+paper (its `data/` folder) and only feeds `histogram_deltas.csv`.
 
 The files in `output/paper/` are the ones used in the corrected paper.
 
