@@ -3,6 +3,7 @@ from mappings.json, runs the generic engine (ocel_construction, Algorithm 1 of t
 paper) and exports the result with pm4py's OCEL 2.0 writers. The published log is
 the variant 'paper'; the variants A and B exist for the tests (see
 ocel_construction)."""
+import copy
 import functools
 import json
 import os
@@ -105,6 +106,21 @@ def create_ocel_files(overall_dataframe, RESOURCES_DIR, CONFIG, variant="A",
     return ocel
 
 
+def xml_export_view(ocel):
+    """The log as pm4py's XML-OCEL writer needs it. The writer takes the two
+    columns of an object-to-object relation by position, target first and
+    qualifier second; the log holds them as qualifier and target, and written
+    as such every relation would carry its qualifier as object-id. The view
+    shares all tables with the log and differs only in that column order.
+    """
+    if ocel.o2o is None or len(ocel.o2o) == 0:
+        return ocel
+    view = copy.copy(ocel)
+    oid = ocel.object_id_column
+    view.o2o = ocel.o2o[[oid, oid + "_2", ocel.qualifier]]
+    return view
+
+
 def save_ocel_xml(ocel, resources_dir, log_folder, base_contract, min_block, max_block,
                   variant="A", export_xml=True):
     """Saves the OCEL object via pm4py's OCEL **2.0** writers: SQLite always (the
@@ -122,7 +138,7 @@ def save_ocel_xml(ocel, resources_dir, log_folder, base_contract, min_block, max
         logger.info(f"OCEL 2.0 SQLite written: {target_base}.sqlite")
     if export_xml:
         try:
-            pm4py.write_ocel2(ocel, target_base + ".xmlocel")
+            pm4py.write_ocel2(xml_export_view(ocel), target_base + ".xmlocel")
             logger.info(f"OCEL 2.0 XML written: {target_base}.xmlocel")
         except Exception as e:
             # build-don't-die policy: the XML is a derived view; SQLite and the

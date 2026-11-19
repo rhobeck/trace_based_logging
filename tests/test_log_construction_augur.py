@@ -81,6 +81,16 @@ def test_build_log_end_to_end_roundtrip(project):
     # the workarounds are present in the paper log: W1 transaction objects
     assert objects["ocel:oid"].str.startswith("TX_").sum() == 3
 
+    # the XML carries the object-to-object relations as the log holds them:
+    # source, target and qualifier each in its place
+    o2o_columns = ["ocel:oid", "ocel:oid_2", "ocel:qualifier"]
+    o2o = pd.read_parquet(os.path.join(out, "log_paper", "o2o.parquet"))
+    assert len(o2o) > 0
+    from_xml = pm4py.read_ocel2(xml_path).o2o
+    as_set = lambda df: set(map(tuple, df[o2o_columns].astype(str).values))
+    assert as_set(from_xml) == as_set(o2o)
+    assert set(from_xml["ocel:oid_2"]) <= set(objects["ocel:oid"])
+
 
 def test_build_log_classifies_accounts_itself(project):
     """Without a recorded table, build_log types the run's own addresses
