@@ -129,7 +129,7 @@ transaction hash and the position in the transaction trace, and every event is r
 to at least one object. The corrected event log contains 11,074,965 events; 25 of them
 stem from two failed transactions that the original data extraction had missed.
 
-- Corrected event log: TODO (Zenodo link)
+- Corrected event log: [Zenodo, DOI 10.5281/zenodo.24388223](https://doi.org/10.5281/zenodo.24388223)
 - Code that constructed the published event log: tag
   [`EMISAJ-2025`](https://github.com/rhobeck/trace_based_logging/tree/EMISAJ-2025)
 - Data and code of the figures in the corrected paper: [figures](figures)
