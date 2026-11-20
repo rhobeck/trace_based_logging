@@ -42,13 +42,13 @@ Graphviz (`dot`) and TeX Live's `pdfcrop` on the PATH:
 ```console
 LOG=/path/to/log_tables
 PUBLISHED=/path/to/published/paper
-DEPS="--with duckdb==2.0.0 --with pandas==3.1.0 --with pm4py==2.7.23.11"
+run() { uv run --no-project --with duckdb==2.0.0 --with pandas==3.1.0 --with pm4py==2.7.23.11 python "$@"; }
 
-uv run --no-project $DEPS python figures/log_tables_from_sqlite.py /path/to/event_log.sqlite $LOG
-uv run --no-project $DEPS python figures/regenerate_figures.py --log $LOG \
+run figures/log_tables_from_sqlite.py /path/to/event_log.sqlite $LOG
+run figures/regenerate_figures.py --log $LOG \
     --output figures/output/regenerate_figures --baseline $PUBLISHED
 python3 figures/fig5-9_data.py figures/output/regenerate_figures figures/output/paper
-uv run --no-project $DEPS python figures/fig10_ocdfg.py $LOG figures/output/paper
+run figures/fig10_ocdfg.py $LOG figures/output/paper
 ```
 
 The first command is not needed when `LOG` points at the `transformation/log_paper`
