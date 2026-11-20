@@ -28,7 +28,7 @@ values above 100 in Figures 7 and 8. Both zero counts are taken from `summary.js
 The scripts read the event log as relational tables (`events`, `objects`, `e2o`, `o2o`,
 `object_changes`, as parquet files in one folder). There are two ways to obtain them:
 
-- From the published event log (OCEL 2.0 SQLite, see the main README):
+- From the corrected event log (OCEL 2.0 SQLite, see the main README):
   `log_tables_from_sqlite.py` writes the tables from the SQLite file, with the columns
   the scripts use.
 - From a run of the pipeline: the transformation stage writes the tables to
