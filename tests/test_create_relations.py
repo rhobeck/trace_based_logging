@@ -1,3 +1,4 @@
+import glob
 import os
 import sys
 
@@ -10,17 +11,19 @@ from src.trace_based_logging.raw_trace_retriever import create_relations as cr
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 CREATIONS = os.path.join(REPO, "data", "creations_cache", "creations_dapp.parquet")
-# fall back to the ZIP-dir copy if the repo data isn't populated
-CREATIONS_ALT = "/Users/rhob/Documents/trace_based_logging-main/data/creations_dapp.parquet"
+# otherwise the table of DApp contract creations of a run over the paper's block range
+# (also part of the published dataset: dapp_creations_*.parquet), in any output folder
+CREATIONS_RUN = os.path.join(REPO, "resources", "*", "transformation",
+                             "dapp_creations_*_5926229_11229577.parquet")
 ROOTS = {"0x75228dce4d82566d93068a8d5d49435216551599",
          "0x57f1c2953630056aaadb9bfbda05369e6af7872b"}
 
 
 def creations_path():
-    for p in (CREATIONS, CREATIONS_ALT):
-        if os.path.exists(p):
-            return p
-    return None
+    if os.path.exists(CREATIONS):
+        return CREATIONS
+    runs = sorted(glob.glob(CREATIONS_RUN))
+    return runs[0] if runs else None
 
 
 def test_forward_and_backward_closure():
